@@ -27,8 +27,8 @@ def extractRandom(read1In, read2In, read1Out, read2Out, number = 100000):
     step5 = 'sed \'s/\\t\\t/\\n/g\''
     # Print output
     step6 = 'awk -F \'\\t\' \'{print $1 | "%s"; print $2 | "%s"}\'' %(
-        'gzip >' + read1Out,
-        'gzip >' + read2Out
+        'gzip > ' + read1Out,
+        'gzip > ' + read2Out
     )
     # Combine and return command
     completeCommand = '%s | %s | %s | %s | %s | %s' %(

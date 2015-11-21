@@ -7,14 +7,14 @@ def fastQC(inFile, outDir, path = 'fastqc'):
 
     1)  inFile - Input FASTQ file.
     2)  outDir - Output directory.
-    3)  fastqc - Path to FastQC; Default = 'fastqc'.
+    3)  path - Path to FastQC; Default = 'fastqc'.
     
     '''
     # Extract sample name
     name = re.search('([^/]+)\\.fastq(?:\\.gz){0,1}$',inFile).group(1)
     # Create FastQC command and return it
     fastqcCommand = '%s --extract -q -o %s %s; rm %s %s' %(
-        fastqc,
+        path,
         outDir,
         inFile,
         outDir + name + '_fastqc.html',

@@ -32,8 +32,9 @@ import argparse
 import re
 import os
 # Import custom modules
-from ngs_analysis.fastq import fastqTrim, fastqQC, fastqAlign, fastqExtract
-from ngs_analysis import system
+from ngs_analysis.fastq import fastqTrim, fastqQC, fastqAlign, fastqExtract, fastqFind
+from ngs_analysis.bam import samtools, picard, bamQC
+from ngs_analysis.system import moab
 import alignment_functions
 # Print command
 print '%s\n' %(' '.join(sys.argv))
@@ -83,62 +84,36 @@ parser.add_argument(
     type = str
 )
 # Define optional arguments
+parser.add_argument('-i', '--rsemSpikeIndex', help = 'Suffix of RSEM'+\
+    ' spike-in index', default = '', type = str)
+parser.add_argument('-f', '--forwardProbability', help = 'Probability of'+\
+    ' first read deriving from forward strand', default = '0.5', type = str)
+parser.add_argument('-q', '--trimQuality', help = 'Minimum Base quality for'+\
+    ' trimming', default = '20', type = str)
 parser.add_argument(
-    '-i',
-    '--rsemSpikeIndex',
-    help = 'Suffix of RSEM spike-in index',
-    default = '',
-    type = str
-)
-parser.add_argument(
-    '-p',
-    '--forwardProbability',
-    help = 'Probability of first read deriving from forward strand',
-    default = '0.5',
-    type = str
-)
-parser.add_argument(
-    '-q',
-    '--trimQuality',
-    help = 'Base quality with which to peform trimming',
-    default = '20',
-    type = str
-)
-parser.add_argument(
-    '-l',
-    '--minLength',
-    help = 'Minimum length post trimming',
-    default = '25',
-    type = str
-)
-parser.add_argument(
-    '-s',
-    '--metrics_script',
-    help = 'Script to returns mean and stdev of aligned mates inner distance',
-    default = "/farm/home/rabino01/python/calculate_insert_metrics.py",
-    type = str
-)
-parser.add_argument(
-    '-t',
-    '--tophat2',
-    help = 'Path to Tophat2 executable',
-    default = 'tophat',
-    type = str
-)
-parser.add_argument(
-    '-b',
-    '--bowtie2',
-    help = 'Path to Bowtie2 executable',
-    default = 'bowtie2',
-    type = str
-)
-parser.add_argument(
-    '-r',
-    '--rsem',
-    help = 'Path to rsem-calculate-expression',
-    default = 'rsem-calculate-expression',
-    type = str
-)
+    '-l', '--minLength', help = 'Minimum read length post trimming',
+    default = '25', type = str)
+parser.add_argument('-m', '--metrics_script', help = 'Script to calculate '+\
+    'tophat2 mate distance metrics', default = '/farm/home/rabino01/'+\
+    'python/calculate_insert_metrics.py', type = str)
+parser.add_argument('-t', '--tophat2', help = 'Path to Tophat2 executable',
+    default = 'tophat', type = str)
+parser.add_argument('-b', '--bowtie2', help = 'Path to Bowtie2 executable',
+    default = 'bowtie2', type = str)
+parser.add_argument('-r', '--rsem', help = 'Path to rsem-calculate-expression',
+    default = 'rsem-calculate-expression',  type = str)
+parser.add_argument('-s', '--samtools', help = 'Path to samtools executable',
+    default = 'samtools',type = str)
+parser.add_argument('-n', '--rnaseqc', help = 'RNASeqC jar file',
+    default = 'RNASeQC.jar', type = str)
+parser.add_argument('-p', '--picard', help = 'Picard jar file',
+    default = 'picard.jar', type = str)
+parser.add_argument('-a', '--cutadapt', help = 'Path to cutadapt executable',
+    default = 'cutadapt', type = str)
+parser.add_argument('-c', '--fastqc', help = 'FastQC exectuable',
+    default = 'fastqc', type = str)
+parser.add_argument('-j', '--java', help = 'Java Path',
+    default = 'java', type = str)
 # Extract arguments
 args = parser.parse_args()
 
@@ -175,11 +150,11 @@ dirList = [args.fastqDir, args.fastqSampleDir, args.rsemTranDir,
 if args.rsemSpikeIndex:
     args.rsemSpikeDir = args.outDir + 'rsemSpike/'
     args.rsemSpikeSampleDir = args.rsemSpikeDir + args.name + '/'
-    dirList.extend([args.rsemSpikeDir, rsemSpikeSampleDir])
+    dirList.extend([args.rsemSpikeDir, args.rsemSpikeSampleDir])
 # Create output directories
 for directory in dirList:
-    if not os.path.exists(dirList):
-        os.mkdir(folder)
+    if not os.path.exists(directory):
+        os.mkdir(directory)
 
 #################################################################################
 ### Generate commands to concatenate and trim FASTQ files
@@ -206,7 +181,8 @@ if len(args.read1) > 1:
         read1In = args.concatRead1,
         read2In = args.concatRead2,
         read1Out = args.trimRead1,
-        read2Out = args.trimRead2
+        read2Out = args.trimRead2,
+        path = args.cutadapt
     )
     trimReadsCommand = '%s; rm %s %s' %(
         trim,
@@ -221,7 +197,8 @@ else:
         read1In = args.read1[0],
         read2In = args.read2[0],
         read1Out = args.trimRead1,
-        read2Out = args.trimRead2
+        read2Out = args.trimRead2,
+        path = args.cutadapt
     )
 
 ################################################################################
@@ -230,11 +207,13 @@ else:
 # Generate commands
 read1Fastqc = fastqQC.fastQC(
     inFile = args.trimRead1, 
-    outDir = args.fastqResultsDir
+    outDir = args.fastqSampleDir,
+    path = args.fastqc
 )
 read2Fastqc = fastqQC.fastQC(
     inFile = args.trimRead2,
-    outDir = args.fastqResultsDir
+    outDir = args.fastqSampleDir,
+    path = args.fastqc
 )
 # Concatenate commands
 fastqcCommand = '%s && %s' %(
@@ -247,9 +226,9 @@ fastqcCommand = '%s && %s' %(
 ################################################################################
 # Generate file names
 args.rsemTranPrefix = args.rsemTranSampleDir + args.name
-args.rsemLog = args.rsemPrefix + '_RSEM.log'
-args.rsemTranBam = args.rsemPrefix + '.transcript.bam'
-args.rsemGenomeBam = args.rsemPrefix + '.genome.bam'
+args.rsemTranLog = args.rsemTranPrefix + '_RSEM.log'
+args.rsemTranBam = args.rsemTranPrefix + '.transcript.bam'
+args.rsemTranGenomeBam = args.rsemTranPrefix + '.genome.bam'
 # Generate rsem transcript alignment command
 rsemTranAlign = fastqAlign.rsemBowtie2Align(
     read1 = args.trimRead1,
@@ -263,57 +242,59 @@ rsemTranAlign = fastqAlign.rsemBowtie2Align(
     genomeBam = True
 )
 rsemTranCommand = '%s && rm %s %s' %(
-    rsemAlign,
+    rsemTranAlign,
     args.rsemTranBam,
-    args.rsemGenomeBam
+    args.rsemTranGenomeBam
 )
 
 ################################################################################
 ## Generate RSEM Spike-In Alignment command
 ################################################################################
 # Generate file names
-args.rsemSpikePrefix = args.rsemSpikeSampleDir + args.name
-args.rsemLog = args.rsemSpikePrefix + '_RSEM.log'
-args.rsemTranBam = args.rsemSpikePrefix + '.transcript.bam'
-# Generate rsem transcript alignment command
-rsemSpikeAlign = fastqAlign.rsemBowtie2Align(
-    read1 = args.trimRead1,
-    read2 = args.trimRead2,
-    index = args.rsemTranIndex,
-    outPrefix = args.rsemTranPrefix,
-    rsemPath = args.rsem,
-    bowtie2Path = re.sub('[^/]*$', '', args.bowtie2),
-    threads = 4,
-    forProb = args.forwardProbability,
-    genomeBam = False
-)
-rsemTranCommand = '%s && rm %s %s' %(
-    rsemAlign,
-    args.rsemTranBam
-)
+if args.rsemSpikeIndex:
+    args.rsemSpikePrefix = args.rsemSpikeSampleDir + args.name
+    args.rsemSpikeLog = args.rsemSpikePrefix + '_RSEM.log'
+    args.rsemSpikeBam = args.rsemSpikePrefix + '.transcript.bam'
+    # Generate rsem transcript alignment command
+    rsemSpikeAlign = fastqAlign.rsemBowtie2Align(
+        read1 = args.trimRead1,
+        read2 = args.trimRead2,
+        index = args.rsemSpikeIndex,
+        outPrefix = args.rsemSpikePrefix,
+        rsemPath = args.rsem,
+        bowtie2Path = re.sub('[^/]*$', '', args.bowtie2),
+        threads = 4,
+        forProb = args.forwardProbability,
+        genomeBam = False
+    )
+    rsemSpikeCommand = '%s && rm %s' %(
+        rsemSpikeAlign,
+        args.rsemTranBam
+    )
 
 ################################################################################
 ## Generate Tophat2 Alignment Command
 ################################################################################
 # Generate file names
-args.sampleRead1 = args.fastqResultsDir + args.sampleName + '_sample_R1.fastq.gz'
-args.sampleRead2 = args.fastqResultsDir + args.sampleName + '_sample_R2.fastq.gz'
-args.tempSam = args.tophatResultsDir + args.sampleName + '_temp.sam'
-args.tophatLog = args.tophatResultsDir + args.sampleName + '_Tophat2.log'
+args.sampleRead1 = args.fastqSampleDir + args.name + '_sample_R1.fastq.gz'
+args.sampleRead2 = args.fastqSampleDir + args.name + '_sample_R2.fastq.gz'
+args.tempSam = args.tophatSampleDir + args.name + '_temp.sam'
+args.tophatLog = args.tophatSampleDir + args.name + '_Tophat2.log'
 # Extract sample command
 sampleCommand = fastqExtract.extractRandom(
-    read1_input = args.trimRead1,
-    read2_input = args.trimRead2,
-    read1_output = args.sampleRead1,
-    read2_output = args.sampleRead2,
-    read_number = 100000
+    read1In = args.trimRead1,
+    read2In = args.trimRead2,
+    read1Out = args.sampleRead1,
+    read2Out = args.sampleRead2,
+    number = 100000
 )
 # Extract alignment command
-alignSampleCommand = fastq.bowtie2Align(
+alignSampleCommand = fastqAlign.bowtie2Align(
     read1 = args.sampleRead1,
     read2 = args.sampleRead2,
     index = args.bowtie2TranscriptIndex,
-    outFile = args.tempSam,
+    path = args.bowtie2,
+    outSam = args.tempSam,
     threads = 4
 )
 # Calculate insert metrics
@@ -327,15 +308,14 @@ tophat2Command = fastqAlign.tophat2Align(
     read2 = args.trimRead2,
     genomeIndex = args.bowtie2GenomeIndex,
     transcriptIndex = args.bowtie2TranscriptIndex,
-    outDir = args.tophatResultsDir,
+    outDir = args.tophatSampleDir,
     path = args.tophat2,
     forProb = args.forwardProbability,
     threads = 4,
     mateDist = '$m',
     mateSD = '$s',
-    sampleName = args.sampleName,
-    libraryID = args.libraryID,
-    readGroup = args.readGroup
+    readGroup = args.name,
+    sampleName = args.name
 )
 # Combine commands
 tophat2Combined = '%s && %s && %s && %s && rm %s %s' %(
@@ -350,35 +330,34 @@ tophat2Combined = '%s && %s && %s && %s && rm %s %s' %(
 ################################################################################
 ## Perform RNASeQC analysis
 ################################################################################
-args.tophatBam = args.tophatResultsDir + 'accepted_hits.bam'
-args.mdupBam = args.tophatResultsDir + args.sampleName + '_tophat_mdup.bam'
-args.mdupLog = args.tophatResultsDir + args.sampleName + '_tophat_mdup.log'
-args.seqcLog = args.tophatResultsDir + args.sampleName + '_rnaseqc.log'
+args.tophatBam = args.tophatSampleDir + 'accepted_hits.bam'
+args.mdupBam = args.tophatSampleDir + args.name + '_tophat_mdup.bam'
+args.mdupLog = args.tophatSampleDir + args.name + '_mdup.log'
+args.seqcLog = args.tophatSampleDir + args.name + '_rnaseqc.log'
 # Create command to mark duplicates
-markDupCommand = alignment_functions.picard_mark_duplicates(
+markDupCommand = picard.markDuplicates(
     inBam = args.tophatBam,
     outBam = args.mdupBam,
     logFile = args.mdupLog,
-    remove_duplicates = False
-)
-# Create command to index marked BAM
-indexCommand = alignment_functions.samtools_index(
-    inBam = args.mdupBam
+    removeDuplicates = False,
+    picardPath = args.picard,
+    javaPath = args.java,
+    delete = True
 )
 # Create command to peform RNASeqC
-seqcCommand = alignment_functions.RNASeqC(
+seqcCommand = bamQC.RNASeqC(
     inBam = args.mdupBam,
     fasta = args.bowtie2GenomeIndex + '.fa',
     gtf = args.gtfFile,
     rRNA = args.rRNAList,
-    outDir = args.tophatResultsDir,
-    outPrefix = args.sampleName
+    outDir = args.tophatSampleDir,
+    outPrefix = args.name,
+    seqcPath = args.rnaseqc,
+    javaPath = args.java
 )
 # Combine mark, index and RNASeqC commands
-seqcComboCommand = '%s && rm %s && %s && %s' %(
+seqcComboCommand = '%s && %s' %(
     markDupCommand,
-    args.tophatBam,
-    indexCommand,
     seqcCommand
 )
 
@@ -387,63 +366,74 @@ seqcComboCommand = '%s && rm %s && %s && %s' %(
 ################################################################################
 #Submit concatenation commands if required
 if concatRead1Command:
-#    concatRead1JobID = moab.submitjob(
-#        concatRead1Command
-#    )
-#    concatRead2JobID = moab.submitjob(
-#        concatRead2Command
-#    )
+    concatRead1JobID = moab.submitjob(
+        concatRead1Command
+    )
+    concatRead2JobID = moab.submitjob(
+        concatRead2Command
+    )
     print 'Concatenate read1 command: %s' %(concatRead1Command)
-#    print 'Concatenate read1 job ID: %s\n' %(concatRead1JobID)
+    print 'Concatenate read1 job ID: %s\n' %(concatRead1JobID)
     print 'Concatenate read2 command: %s' %(concatRead2Command)
-#    print 'Concatenate read2 job ID: %s\n' %(concatRead2JobID)
-#    concatReadsJobID = [concatRead1JobID, concatRead2JobID]
-#else:
-#    concatReadsJobID = None
+    print 'Concatenate read2 job ID: %s\n' %(concatRead2JobID)
+    concatReadsJobID = [concatRead1JobID, concatRead2JobID]
+else:
+    concatReadsJobID = None
 # Submit trimming commands
-#trimReadsJobID = moab.submitjob(
-#    command = trimReadsCommand,
-#    stdout = args.trimLog,
-#   stderr = args.trimLog,
-#    dependency = concatReadsJobID
-#)
+trimReadsJobID = moab.submitjob(
+    command = trimReadsCommand,
+    stdout = args.trimLog,
+    stderr = args.trimLog,
+    dependency = concatReadsJobID
+)
 print 'Trim command: %s' %(trimReadsCommand)
-#print 'Trim Job ID: %s\n' %(trimReadsJobID)
+print 'Trim Job ID: %s\n' %(trimReadsJobID)
 # Submit FASTQC commands
-#fastqcJobID = moab.submitjob(
-#    command = fastqcCommand,
-#    processor = 1,
-#    dependency = trimReadsJobID
-#)
+fastqcJobID = moab.submitjob(
+    command = fastqcCommand,
+    processor = 1,
+    dependency = trimReadsJobID
+)
 print 'FastQC Command: %s' %(fastqcCommand)
-#print 'FastQC Job ID: %s\n' %(fastqcJobID)
-# Submit rsem commands
-#rsemJobID = moab.submitjob(
-#    command = rsemCommand,
-#    processor = 4,
-#    stdout = args.rsemLog,
-#    stderr = args.rsemLog,
-#    dependency = trimReadsJobID
-#)
-print 'RSEM Command: %s' %(rsemCommand)
-#print 'RSEM Job ID: %s\n' %(rsemJobID)
+print 'FastQC Job ID: %s\n' %(fastqcJobID)
+# Submit rsem transcript command
+rsemTranJobID = moab.submitjob(
+    command = rsemTranCommand,
+    processor = 4,
+    stdout = args.rsemTranLog,
+    stderr = args.rsemTranLog,
+    dependency = trimReadsJobID
+)
+print 'RSEM Transcript Command: %s' %(rsemTranCommand)
+print 'RSEM Transcript Job ID: %s\n' %(rsemTranJobID)
+# Submit rsem spike command
+if args.rsemSpikeIndex:
+    rsemSpikeJobID = moab.submitjob(
+        command = rsemSpikeCommand,
+        processor = 4,
+        stdout = args.rsemSpikeLog,
+        stderr = args.rsemSpikeLog,
+        dependency = trimReadsJobID
+    )
+    print 'RSEM Spike Command: %s' %(rsemSpikeCommand)
+    print 'RSEM Spike Job ID: %s\n' %(rsemSpikeJobID)
 # Submit tophat2 commands
-#tophatJobID = moab.submitjob(
-#    command = tophat2Combined,
-#    processor = 4,
-#    stdout = args.tophatLog,
-#    stderr = args.tophatLog,
-#    dependency = trimReadsJobID
-#)
+tophatJobID = moab.submitjob(
+    command = tophat2Combined,
+    processor = 4,
+    stdout = args.tophatLog,
+    stderr = args.tophatLog,
+    dependency = trimReadsJobID
+)
 print 'Tophat Command: %s' %(tophat2Combined)
-#print 'Tophat Job ID: %s\n' %(tophatJobID)
+print 'Tophat Job ID: %s\n' %(tophatJobID)
 # Submit RNASeqC command
-#seqcJobID = moab.submitjob(
-#    command = seqcComboCommand,
-#    processor = 1,
-#    stdout = args.seqcLog,
-#    stderr = args.seqcLog,
-#    dependency = tophatJobID
-#)
+seqcJobID = moab.submitjob(
+    command = seqcComboCommand,
+    processor = 1,
+    stdout = args.seqcLog,
+    stderr = args.seqcLog,
+    dependency = tophatJobID
+)
 print 'RNASeqC Command: %s' %(seqcComboCommand)
-#print 'RNASeqC JobID: %s' %(seqcJobID)
+print 'RNASeqC JobID: %s' %(seqcJobID)

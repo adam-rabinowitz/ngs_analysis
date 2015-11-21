@@ -125,7 +125,7 @@ def bwaMemAlign(index, outSam, read1, read2 = '', path = 'bwa',
     )
     return(completeCommand)
 
-def rsemBowtie2Align(index, outPrefix, read1, read2 = ''
+def rsemBowtie2Align(index, outPrefix, read1, read2 = '',
     rsemPath = 'rsem-calculate-expression', bowtie2Path = '', threads = 1,
     forProb = 0.5, genomeBam = True, estimateRspd = True, check = True):
     ''' Function generates and returns a command to align paired FASTQ
@@ -151,7 +151,7 @@ def rsemBowtie2Align(index, outPrefix, read1, read2 = ''
         if check:
             suffix = ['.grp', '.ti', '.transcripts.fa', '.seq', '.chrlist',
             '.idx.fa', '.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
-            '.rev.2.bt2']:
+            '.rev.2.bt2']
             for s in suffix:
                 if not os.path.isfile(index + s):
                     raise IOError('Could not find index file %s' %(
@@ -191,8 +191,8 @@ def rsemBowtie2Align(index, outPrefix, read1, read2 = ''
         rsemCommand.insert(-2, read2)
     # Process bowtie2 arguments
     if bowtie2Path:
-        rsemCommand.insert(5, bowtie2Path)
-        rsemCommand.insert(5, '--bowtie2-path')
+        rsemCommand.insert(4, bowtie2Path)
+        rsemCommand.insert(4, '--bowtie2-path')
     # Concatenate and return command
     rsemCommand =  filter(None, rsemCommand)
     rsemCommand = ' '.join(rsemCommand)
