@@ -1,3 +1,22 @@
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
+import gzip
+
+def read2Pipe(fastqFile, pipe):
+    ''' Function parses a FASTQ file using Bio.SeqIO and creates a list
+    object where each element is a line of the fastq file. The list elements
+    are sent down the pipe.
+            
+    '''
+    # Create command to open file
+    if fastqFile.endswith('.gz'):
+        openFile = gzip.open
+    else:
+        openFile = open
+    # Create output
+    for title, seq, qual in FastqGeneralIterator(openFile(fastqFile)):
+        pipe.send([title,seq,'+',qual])
+    pipe.close()
+
 def extractRandom(read1In, read2In, read1Out, read2Out, number = 100000):
     ''' This function generates and reutrns a command to extracts random
     reads from paired fastq files. Function takes five arguments:

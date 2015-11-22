@@ -1,77 +1,71 @@
 ''' Functions to merge FASTQ files '''
 import multiprocessing
 import gzip
-from Bio import SeqIO
-from github.general_functions import iohandle
+import re
+from ngs_analysis.fastq import fastqExtract
 
-def labelFastq(fastq, label, output):
-    ''' Function to open FASTQ file, rename entries and return reads.
-    Fnction takes three arguments:
+def mergeLabelFastq(fastqIn1, fastqIn2, fastqOut, label1 = ':1',
+    label2 = ':2'):
+    ''' Function merges two FASTQ files into a single FASTQ file.
+    Specified names are added to the end of the merged reads.
     
-    1)  fastq - Full path to fastq file.
-    2)  label - Label to add to FASTQ name.
-    3)  output - Output object handled by the iohandle.hadleout function.
-    
-    '''
-    # Create object to handle output
-    outObject = iohandle.handleout(output)
-    # Open FASTQ file
-    if fastq.endswith('.gz'):
-        fastqHandle = gzip.open(fastq, 'r')
-    else:
-        fastqHandle = open(fastq, 'r')
-    # Loop through reads, add label and add to output
-    readData = SeqIO.parse(fastqHandle, 'fastq')
-    for read in readData:
-        read.id = read.id + label
-        outObject.add(read.format('fastq'))
-    # Close and return output object
-    return(outObject.close())
-
-def mergeLabelFastq(read1, read2, outFastq):
-    ''' Function merges two FASTQ files into a single FASTQ file. A ':1'
-    label is added to the end of read1 names and a ':2' label is added to
-    the end of read2 names. Function takes three arguments:
-    
-    1)  read1 - Python list containg full path to read1 input files.
-    2)  read2 - Python list containg full path to read2 input files.
-    3)  outFastq - Full path to output file
+    1)  fastqIn1 - Python list containg read1 FASTQ files.
+    2)  fastqIn2 - Python list containg read2 FASTQ files.
+    3)  fastqOut - Output FASTQ file
+    4)  label1 - Label to add to read1 file.
+    5)  label2 - Label to add to read2 file.
     
     '''
     # Open output file
-    if outFastq.endswith('.gz'):
-        outFile = gzip.open(outFastq, 'w')
+    if fastqOut.endswith('.gz'):
+        outFile = gzip.open(fastqOut, 'w')
     else:
-        outFile = open(outFastq, 'w')
-    # Loop though read1 and read2 files
-    for r1, r2 in zip(read1,read2):
+        outFile = open(fastqOut, 'w')
+    # Extract reads from read1 and read2 files
+    for f1, f2 in zip(fastqIn1, fastqIn2):
         # Create pipes
         pipe1Recv, pipe1Send = multiprocessing.Pipe(False)
         pipe2Recv, pipe2Send = multiprocessing.Pipe(False)
         # Create and start processes
         p1 = multiprocessing.Process(
-            target = labelFastq,
-            args = (r1, ':1', pipe1Send) 
+            target = fastqExtract.read2Pipe,
+            args = (f1, pipe1Send) 
         )
         p1.start()
         pipe1Send.close()
         p2 = multiprocessing.Process(
-            target = labelFastq,
-            args = (r2, ':2', pipe2Send) 
+            target = fastqExtract.read2Pipe,
+            args = (f2, pipe2Send) 
         )
         p2.start()
         pipe2Send.close()
         # Extract labelled reads and save to output
         while True:
             try:
-                outFile.write(pipe1Recv.recv() + pipe2Recv.recv())
+                read1 = pipe1Recv.recv()
+                read2 = pipe2Recv.recv()
             except EOFError:
-                pipe1Recv.close()
-                p1.join()
-                pipe2Recv.close()
-                p2.join()
                 break
-    # Close output file
+            # Extract read ID and check for equality
+            read1ID = read1[0].split(' ' ,1)
+            read2ID = read2[0].split(' ' ,1)
+            if read1ID[0] != read2ID[0]:
+                raise IOError('Files %s and %s contqain unmatched reads' %(
+                    f1,f2))
+            else:
+                read1ID[0] += label1
+                read2ID[0] += label2
+                outFile.write('%s\n%s\n%s\n%s\n' %(
+                    ' '.join(read1ID),
+                    '\n'.join(read1[1:]),
+                    ' '.join(read2ID),
+                    '\n'.join(read2[1:])
+                ))
+    # Close pipes processes and files
+    pipe1Recv.close()
+    p1.join()
+    pipe2Recv.close()
+    p2.join()
     outFile.close()
 
 def concatFastq(inPrefix, inDirList, outPrefix, pair=True):
