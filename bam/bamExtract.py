@@ -94,5 +94,3 @@ def tophatInsertMetrics(bamFile, maxSize = 2000):
     mean = numpy.mean(innerList, dtype=int)
     stdv = numpy.std(innerList, dtype=int, ddof=1)
     return(length, mean, stdv)
-            
-
