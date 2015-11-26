@@ -269,15 +269,15 @@ if args.rsemSpikeIndex:
     )
     rsemSpikeCommand = '%s && rm %s' %(
         rsemSpikeAlign,
-        args.rsemTranBam
+        args.rsemSpikeBam
     )
 
 ################################################################################
 ## Generate Tophat2 Alignment Command
 ################################################################################
 # Generate file names
-args.sampleRead1 = args.fastqSampleDir + args.name + '_sample_R1.fastq.gz'
-args.sampleRead2 = args.fastqSampleDir + args.name + '_sample_R2.fastq.gz'
+args.sampleRead1 = args.tophatSampleDir + args.name + '_sample_R1.fastq.gz'
+args.sampleRead2 = args.tophatSampleDir + args.name + '_sample_R2.fastq.gz'
 args.tempSam = args.tophatSampleDir + args.name + '_temp.sam'
 args.tophatLog = args.tophatSampleDir + args.name + '_Tophat2.log'
 # Extract sample command
@@ -286,7 +286,7 @@ sampleCommand = fastqExtract.extractRandom(
     read2In = args.trimRead2,
     read1Out = args.sampleRead1,
     read2Out = args.sampleRead2,
-    number = 100000
+    number = 250000
 )
 # Extract alignment command
 alignSampleCommand = fastqAlign.bowtie2Align(
