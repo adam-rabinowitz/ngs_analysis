@@ -1,15 +1,16 @@
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 import gzip
+import random
+import multiprocessing
 
 def readToPipe(fastqFile, pipes):
-    ''' Function parses a FASTQ file using Bio.SeqIO and creates a list
-    object where each element is a line of a single FASTQ entry. The
-    list elements are sent down the pipe. Function takes two arguments:
+    ''' Function parses a FASTQ file using Bio.SeqIO and add individual
+    fASTQ reads to a supplied multiprocessing pipe. Function takes two
+    arguments:
     
     1)  fastqFile - Full path to input FASTQ file.
-    2)  pipes - Tuple containg paired multiprocessing.Connection
-        objects. Pair should be unidirectional with first used to
-        receive messages snd the second to send messages.
+    2)  pipes - A pair of multiprocessing connection objects created
+        using the multiprocessing.Pipe('False') command.
             
     '''
     # Close unsused receive pipe
@@ -25,6 +26,18 @@ def readToPipe(fastqFile, pipes):
     # Close send pipe
     pipes[1].close()
 
+def readToPipeProcess(fastqFile):
+    # Create pipes and process
+    pipes = multiprocessing.Pipe(False)
+    process = multiprocessing.Process(
+        target = readToPipe,
+        args = (fastqFile, pipes)
+    )
+    process.start()
+    pipes[1].close()
+    # Return pipe
+    return(process, pipes[0])
+
 def writeFromPipe(fileName, pipes):
     ''' Write FASTQ or FASTA file 
     1)  fastqFile - Full path to output FASTQ file
@@ -37,21 +50,27 @@ def writeFromPipe(fileName, pipes):
     else:
         outFile = open(fileName, 'w')
     # Write to output file
-    count = 0
     while True:
         try:
             read = pipes[0].recv()
         except EOFError:
             break
         outFile.write(read)
-        count += 1
-        if not (count % 100000):
-            print str(count) + ' written'
     # Close files and pipes
-    print 'Write loop closed'
     outFile.close()
     pipes[0].close()
-    print "Finished writing"
+
+def writeFromPipeProcess(fastqFile):
+    # Create pipes and process
+    pipes = multiprocessing.Pipe('False')
+    process = multiprocessing.Process(
+        target = writeFromPipe,
+        args = (fastqFile, pipes)
+    )
+    process.start()
+    pipes[0].close()
+    # Return process and pipes
+    return(process, pipes[1])
 
 def writeFromPipe2(fileName, pipes):
     # Close unused pipes
@@ -77,6 +96,67 @@ def writeFromPipe2(fileName, pipes):
     fileOut.close()
     pipes[0].close()
     print "Finished writing"
+
+def randomPair(read1In, read2In, read1Out, read2Out, number):
+    ''' Extract random paired end read '''
+    # Count reads in file
+    if read1In.endswith('.gz'):
+        readCount = subprocess.check_output(['zgrep', '-c', '$', read1In])
+    else:
+        readCount = subprocess.check_output(['grep', '-c', '$', read1In])
+    readCount = int(readCount.strip()) / 4
+    # Select which reads to extract
+    random.seed(1)
+    selected = random.sample(
+        range(0,readCount),
+        min(readCount,number)
+    )
+    selected.sort(reverse = True)
+    # Create processes to read input FASTQ files
+    read1InProcess, read1InPipe = readToPipeProcess(read1In)
+    read2InProcess, read2InPipe = readToPipeProcess(read2In)
+    # Create processes to write output FASTQ files
+    read1OutProcess, read1OutPipe = writeFromPipeProcess(read1Out)
+    read2OutProcess, read2OutPipe = writeFromPipeProcess(read2Out)
+    # Select random reads
+    nextRead = selected.pop()
+    readCount = 0
+    # Extract desired reads
+    while True:
+        # Extract reads or break loop
+        try:
+            read1 = read1InPipe.recv()
+            read2 = read2InPipe.recv()
+        except EOFError:
+            break
+        # Find the next random read
+        if readCount == nextRead:
+            # Check for matching read names and write reads
+            read1Name = read1.split('\n',1)[0].split(' ',1)[0]
+            read2Name = read2.split('\n',1)[0].split(' ',1)[0]
+            if read1Name == read2Name:
+                read1OutPipe.send(read1)
+                read2OutPipe.send(read2)
+            else:
+                raise IOError('Input FASTQ files are not paired')
+            # Extract next read number
+            try:
+                nextRead = selected.pop()
+            except IndexError:
+                nextRead = 0
+        readCount += 1
+    # Check that all reads have been extracted
+    if selected:
+        raise ValueError('Not all read numbers extracted')
+    # Close pipes and processes
+    read1InPipe.close()
+    read2InPipe.close()
+    read1OutPipe.close()
+    read2OutPipe.close()
+    read1InProcess.join()
+    read2InProcess.join()
+    read1OutProcess.join()
+    read2OutProcess.join()
 
 import os
 import subprocess
