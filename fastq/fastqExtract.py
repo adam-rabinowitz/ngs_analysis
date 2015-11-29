@@ -12,16 +12,17 @@ def readToPipe(fastqFile, pipes):
         receive messages snd the second to send messages.
             
     '''
-    # Close unsused pipes
+    # Close unsused receive pipe
     pipes[0].close()
-    # Create command to open file
+    # Create open file command
     if fastqFile.endswith('.gz'):
-        openFile = gzip.open
+        readFile = gzip.open
     else:
-        openFile = open
-    # Create output
-    for title, seq, qual in FastqGeneralIterator(openFile(fastqFile)):
-        pipes[1].send(['@' + title, seq, '+', qual])
+        readFile = open
+    # Create output and add to pipe
+    for title, seq, qual in FastqGeneralIterator(readFile(fastqFile)):
+        pipes[1].send('@' + title + '\n' + seq + '\n' '+' '\n' + qual + '\n')
+    # Close send pipe
     pipes[1].close()
 
 def writeFromPipe(fileName, pipes):
@@ -42,7 +43,7 @@ def writeFromPipe(fileName, pipes):
             read = pipes[0].recv()
         except EOFError:
             break
-        outFile.write('\n'.join(read) + '\n')
+        outFile.write(read)
         count += 1
         if not (count % 100000):
             print str(count) + ' written'
@@ -58,7 +59,7 @@ def writeFromPipe2(fileName, pipes):
     # Open output file
     fileOut = gzip.open(fileName, 'wb')
     sp = subprocess.Popen('gzip', stdout = fileOut,
-        stdin = subprocess.PIPE)
+        stdin = subprocess.PIPE, bufsize = -1)
     count = 0
     # Write to output file
     while True:
@@ -66,13 +67,13 @@ def writeFromPipe2(fileName, pipes):
             read = pipes[0].recv()
         except EOFError:
             break
-        sp.stdin.write('\n'.join(read) + '\n')
+        sp.stdin.write(read)
         count += 1
         if not (count % 100000):
             print str(count) + ' written'
     # Close files and pipes
     print 'Write loop closed'
-    sp.terminate()
+    print sp.poll()
     fileOut.close()
     pipes[0].close()
     print "Finished writing"

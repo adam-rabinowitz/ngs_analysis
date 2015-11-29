@@ -74,7 +74,7 @@ for directory in dirDict['rsemTranDirList']:
         qcMetrics.loc[directory, 'expressed_genes'] = sum(
             geneData['expected_count'] > 0)
     else:
-        print 'No RSEM gene counts for sample %s' %(directory)
+        print "No RSEM transcript '.cnt' for sample %s" %(directory)
     # Generate name of rsem count file
     countFileName = '%s/%s.stat/%s.cnt' %(
         directory,
@@ -90,7 +90,8 @@ for directory in dirDict['rsemTranDirList']:
         qcMetrics.loc[directory, 'rsem_tran_align'] = ( float(alignData[1]) /
             int(alignData[3]))
     else:
-        print "No RSEM '.genes.results' file for sample %s" %(directory)
+        print "No RSEM transcript '.genes.results' file for sample %s" %(
+            directory)
     
 ################################################################################
 ## Process RSEM Spike Data
@@ -105,7 +106,7 @@ if os.path.isdir(args.inDir + 'rsemSpike'):
             directory
         )
         # Extract RSEM spike-in counts
-        if os.path.isfile(countFileName)
+        if os.path.isfile(countFileName):
             rsemAlignFile = open(countFileName, 'r')
             alignData = rsemAlignFile.readline().strip().split()
             rsemAlignFile.close()
@@ -113,7 +114,7 @@ if os.path.isdir(args.inDir + 'rsemSpike'):
                 / int(alignData[3]) )
         # Or report their absence
         else:
-            print "No RSEM '.cnt' file for sample %s" %(directory)
+            print "No RSEM spike-in '.cnt' file for sample %s" %(directory)
 
 ################################################################################
 ## Extract mean TPM values for specified groups of genes
@@ -167,12 +168,13 @@ for directory in dirDict['tophatDirList']:
     seqcFileName = '%s/metrics.tsv' %(
         directory
     )
-    # Read in rnaseqc metrics
-    seqcData = pandas.read_csv(
-        seqcFileName,
-    sep = '\t'
-    )
-    if os.path.isfile(seqcData):
+    # Check existence of file and extract metrics
+    if os.path.isfile(seqcFileName):
+        # Read in rnaseqc metrics
+        seqcData = pandas.read_csv(
+            seqcFileName,
+            sep = '\t'
+        )
         qcMetrics.loc[directory, 'duplication_rate'] = seqcData.loc[0,
             'Duplication Rate of Mapped']
         qcMetrics.loc[directory, 'exonic_rate'] = seqcData.loc[0, 'Exonic Rate']
@@ -182,7 +184,7 @@ for directory in dirDict['tophatDirList']:
             'Intergenic Rate']
         qcMetrics.loc[directory, 'rRNA_rate'] = seqcData.loc[0, 'rRNA rate']
     else:
-        print "No RNASeqC 'metrics.tsv' file for samples %s" %(directory)
+        print "No RNASeqC 'metrics.tsv' file for sample %s" %(directory)
 
 ################################################################################
 ## Process FASTQ data
