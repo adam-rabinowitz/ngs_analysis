@@ -5,28 +5,46 @@ import multiprocessing
 
 def readToPipe(fastqFile, pipes):
     ''' Function parses a FASTQ file using Bio.SeqIO and add individual
-    fASTQ reads to a supplied multiprocessing pipe. Function takes two
-    arguments:
+    fASTQ reads to a supplied multiprocessing pipe. The function closes
+    the pipe when all input FASTQ files are processed. Function takes
+    two arguments:
     
-    1)  fastqFile - Full path to input FASTQ file.
+    1)  fastqFile - A string of the FASTQ file path or a python list
+        containing a series of FASTQ file paths.
     2)  pipes - A pair of multiprocessing connection objects created
         using the multiprocessing.Pipe('False') command.
             
     '''
     # Close unsused receive pipe
     pipes[0].close()
-    # Create open file command
-    if fastqFile.endswith('.gz'):
-        readFile = gzip.open
-    else:
-        readFile = open
-    # Create output and add to pipe
-    for title, seq, qual in FastqGeneralIterator(readFile(fastqFile)):
-        pipes[1].send('@' + title + '\n' + seq + '\n' '+' '\n' + qual + '\n')
+    # Process input file(s)
+    if isinstance(fastqFile, str):
+        fastqFile = [fastqFile]
+    # Loop through fastq files and add contents to pipe
+    for f in fastqFile:
+        # Create open file command
+        if f.endswith('.gz'):
+            readFile = gzip.open
+        else:
+            readFile = open
+        # Create output and add to pipe
+        for title, seq, qual in FastqGeneralIterator(readFile(f)):
+            pipes[1].send('@' + title + '\n' + seq + '\n' '+' '\n' + qual)
     # Close send pipe
     pipes[1].close()
 
 def readToPipeProcess(fastqFile):
+    ''' Function creates a multiprocessing process and pip. The process
+    parses FASTQ files and passes individual entries into the pipe.
+    Function returns the process and the end of the pipe from which
+    individual FASTQ entries can be extracted. The pipe will return
+    EOFError when all entries have been extracted. At this point the
+    process can be joined. Function takes one argument:
+    
+    1)  fastqFile - A string of the FASTQ file path or a python list
+    containing a series of FASTQ file paths.
+    
+    '''
     # Create pipes and process
     pipes = multiprocessing.Pipe(False)
     process = multiprocessing.Process(
