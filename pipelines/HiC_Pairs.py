@@ -10,7 +10,8 @@ import itertools
 import os
 # Import custom modules
 from ngs_analysis.fastq import fastqFind, fastqMerge, fastqAlign
-from ngs_analysis.structure import alignedPairs, fragendPairs
+from ngs_analysis.bam import samtools
+from ngs_analysis.structure import alignedPair, fragendPair
 # Create parser
 parser = argparse.ArgumentParser()
 # Define positional arguments
@@ -34,6 +35,10 @@ parser.add_argument('-c', '--maxConcordant', help = 'Max fragment size of '+\
     'concordant reads', type = int, default = 2000)
 parser.add_argument('-r', '--removeConcordant', help = 'Remove concordant '+\
     'pairs ', type = bool, default = True)
+parser.add_argument('-b', '--bwa', help = 'Path to BWA', type = str,
+    default = 'bwa')
+parser.add_argument('-t', '--threads', help = 'Number of threads to use',
+    type = int, default = 4)
 # Check arguments
 args = parser.parse_args()
 if args.maxDistance < 0:
@@ -47,11 +52,11 @@ args.cutSite = args.cutSite.upper()
 args.fastqPrefix, args.sampleName = args.sampleData.split(',')
 # Print parameters
 print 'Parameters:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
-    'minimum read length: ' + str(args.minLength)
-    'mimimum mapping quality: ' + str(args.minMapQ)
-    'maximum fragend distance: ' + str(args.maxDistance)
-    'maximum distance of concordant pairs: ' str(args.maxConcordant)
-    'remove concordant pairs: ' str(args.removeConcordant)
+    'minimum read length: ' + str(args.minLength),
+    'mimimum mapping quality: ' + str(args.minMapQ),
+    'maximum fragend distance: ' + str(args.maxDistance),
+    'maximum distance of concordant pairs: ' + str(args.maxConcordant),
+    'remove concordant pairs: ' + str(args.removeConcordant)
 )
 # Create output file names
 args.logFile = args.outDir + args.sampleName + '.log'
@@ -61,9 +66,9 @@ args.nameSortBam = args.outDir + args.sampleName + "_nSort.bam"
 args.outPairs = args.outDir + args.sampleName + ".readPairs.gz"
 args.outFrags = args.outDir + args.sampleName + ".fragLigations.gz"
 
-################################################################################
-## Process FASTQ files and perform alignment
-################################################################################
+#################################################################################
+### Process FASTQ files and perform alignment
+#################################################################################
 # Extract fastq file names
 args.read1, args.read2 = fastqFind.findIlluminaFastq(prefix = args.fastqPrefix,
     dirList = args.fastqDir.split(','), pair = True)
@@ -72,7 +77,7 @@ trimMetrics = fastqMerge.mergeLabelTrimPair(
     fastqIn1 = args.read1,
     fastqIn2 = args.read2,
     fastqOut = args.outFastq,
-    args.trimSeq = args.cutSite,
+    trimSeq = args.cutSite,
     label1 = ':1',
     label2 = ':2'
 )
@@ -88,8 +93,8 @@ alignCommand = fastqAlign.bwaMemAlign(
     index = args.bwaFasta,
     outSam = args.outSam,
     read1 = args.outFastq,
-    path = 'bwa',¬
-    threads = 4,
+    path = args.bwa,
+    threads = str(args.threads),
     markSecondary = True,
     check = True
 )
@@ -98,57 +103,73 @@ sortCommand = samtools.sort(
     inFile = args.outSam,
     outFile = args.nameSortBam,
     name = True,
-    threads = 4,¬
-    memory = '2',
+    threads = str(args.threads),
+    memory = '2G',
     delete = True,
     path = 'samtools'
 )
 # Merge commands and run
-alignSort = '%s && %s' (alignCommand, sortCommand)
+alignSort = '%s && %s' %(alignCommand, sortCommand)
 subprocess.check_output(alignSort, shell = True, stderr=subprocess.STDOUT)
 
 ###############################################################################
 ## Extract aligned pairs
 ###############################################################################
-# Create pair object and extract pairs
-pairObject = alignedPairs.ReadPairs(args.nameSortBam)
-alignData = pairObect.extract(
-    outPairs = args.outPairs,
-    minMapQ = 20,
-    maxSize = 2000,
-    rmConcord = True,
-    rmDup = True
+# extract pairs from alignments
+pairs, alignMetrics = alignedPair.extractPairs(
+    inBam = args.nameSortBam,
+    minMapQ = args.minMapQ
 )
 # Print alignment metrics
 print 'Alignment Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
-    'total: ' + str(alignData['total']),
-    'unmapped: ' + str(alignData['unmapped']),
-    'poorly mapped: ' + str(alignData['poormap']),
-    'secondary alignment: ' + str(alignData['secondary']),
-    'singletons: ' + str(alignData['singletons']),
-    'multiple alignments: ' + str(alignData['multiple']),
-    'paired: %s' + str(alignData['pairs'])
+    'total: ' + str(alignMetrics['total']),
+    'unmapped: ' + str(alignMetrics['unmapped']),
+    'poorly mapped: ' + str(alignMetrics['poormap']),
+    'secondary alignment: ' + str(alignMetrics['secondary']),
+    'singletons: ' + str(alignMetrics['singletons']),
+    'multiple alignments: ' + str(alignMetrics['multiple']),
+    'paired: ' + str(alignMetrics['pairs'])
+)
+# Process duplicate and concordant reads
+pairMetrics = alignedPair.processPairs(
+    pairs = pairs,
+    pairOut = args.outPairs,
+    rmDup = True,
+    rmConcord = args.removeConcordant,
+    maxSize = args.maxDistance
 )
 # Print pair statistics
-print 'Pair Data:\n\t%s\n\t%s\n\t%s\n\t''\ttotal: %s' %(alignData['pairs'] / 2)
-print '\tunique: %s' %(alignData['unique'])
-print '\tduplication rate: %s' %(alignData['duprate'])
-print '\tdiscordant: %s' %(alignData['discord'])
-print '\tconcordant rate %s' %(alignData['concordrate'])
+print 'Pair Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %( 
+    'total: ' + str(pairMetrics['total']),
+    'unique: ' + str(pairMetrics['unique']),
+    'discordant: ' + str(pairMetrics['discord']),
+    'unique discordant: ' + str(pairMetrics['discorduni']),
+    'duplication rate: ' + pairMetrics['dupratio'],
+    'concordant rate: ' + pairMetrics['conratio']
+)
 
 ##############################################################################
 ## Extract fragend pairs
 ##############################################################################
-fragendObject = fragendPairs.Fragend(args.bwaFasta, args.cutSite)
-
+fragendMetrics = fragendPair.fragendPairs(
+    pairIn = args.outPairs,
+    fragendOut = args.outFrags,
+    fasta = args.bwaFasta,
+    maxDistance = args.maxDistance,
+    resite = args.cutSite
+)
 # Remove fragend and ligation distance data
-fragendDist = fragendData.pop('fragend distance')
-ligationDist = fragendData.pop('ligation distance')
+fragendDist = fragendMetrics.pop('fragDist')
+ligationDist = fragendMetrics.pop('ligDist')
 # Print fragend metrics
-print '\nFragend Data:'
-for key in fragendData:
-    print '\t%s: %s' %(key, fragendData[key])
-# Calclate and print fragend metrics if accepted fragends are present
+print 'Fragend Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
+    'total: ' + str(fragendMetrics['total']),
+    'no fragend: ' + str(fragendMetrics['none']),
+    'too distant: ' + str(fragendMetrics['distant']),
+    'interchromosomal: ' + str(fragendMetrics['interchromosomal']),
+    'intrachromosomal: ' + str(fragendMetrics['intrachromosomal'])
+)
+## Calclate and print fragend metrics if accepted fragends are present
 fragendCount = float(len(fragendDist))
 if fragendCount > 0:
     fragendHist = numpy.histogram(

@@ -3,8 +3,9 @@ from Bio import SeqIO
 from Bio.SeqUtils import nt_search
 from Bio.Seq import Seq
 import bisect
-from general_functions import iohandle
 import collections
+import gzip
+import pickle
 
 def findFragendSites(fasta, resite):
     ''' Function creates FragendDict object. The object contains
@@ -13,10 +14,10 @@ def findFragendSites(fasta, resite):
     '''
     # Process restriction enzyme size and create output dictionary
     resite = resite.upper()
-    frags = {'chr': [], 'rsesite': resite}
+    frags = {'chr': [], 'resite': resite}
     # Create sequence object for resite and reverse complent
-    standard = Seq(self.resite)
-    revcomp = standard.reve
+    standard = Seq(resite)
+    revcomp = standard.reverse_complement()
     # Open and parse fasta file
     fastaHandle = open(fasta)
     fastaData = SeqIO.parse(fastaHandle,'fasta')
@@ -28,14 +29,14 @@ def findFragendSites(fasta, resite):
         # Add re sites to dictionary using 1 based index
         forward = nt_search(fSequence, standard)[1:]
         if forward:
-            self.frags[(fName,'+')] = [x + len(resite) for x in forward]
+            frags[(fName,'+')] = [x + len(resite) for x in forward]
         else:
-            self.frags[(fName,'+')] = []
+            frags[(fName,'+')] = []
         reverse = nt_search(fSequence, revcomp)[1:]
         if reverse:
-            self.frags[(fName,'-')] = [x + 1 for x in reverse]
+            frags[(fName,'-')] = [x + 1 for x in reverse]
         else:
-            self.frags[(fName,'-')] = []
+            frags[(fName,'-')] = []
     # Close input file and return data
     fastaHandle.close()
     return(frags)
@@ -74,19 +75,13 @@ def downstream(readIn, fragDict, fragOut = []):
     from 5' end of read. For a '-' strand read distance is measured
     from the 3' end of the read.
     '''
-    # Create input and output objects
-    inData = iohandle.handlein(readIn)
-    outData = iohandle.handleout(fragOut)
-    # Extract resite
+    # Extract resite and create output variable
     resite = fragDict['resite']
+    output = []
     # Sequentially process in data
-    while True:
-        # Get additional input or break loop
-        try:
-            chrom, start, end, strand = inData.next()
-        except EOFError:
-            break
+    for read in readIn:
         # Process variables
+        chrom, start, end, strand = read
         start = int(start)
         end = int(end)
         fragLoc = None
@@ -96,10 +91,10 @@ def downstream(readIn, fragDict, fragOut = []):
             raise ValueError("End must be more 3' than the start")
         # Extract fragends for chromosome and strand
         try:
-            fragends = self.frags[(chrom, strand)]
+            fragends = fragDict[(chrom, strand)]
         except KeyError:
             raise IOError('No data for %s strand on %s chromosome' %(
-                chrom, strand))
+                strand, chrom))
         # Find location of fragend for forward strand read
         if strand == '+':
             fragIndex = bisect.bisect_left(
@@ -126,12 +121,11 @@ def downstream(readIn, fragDict, fragOut = []):
                 # Find distance between read and fragend
                 distance = (end - fragLoc) + 1
         # Add output data
-        outData.add((chrom, fragLoc, strand, distance))
+        output.append((chrom, fragLoc, strand, distance))
     # Close IO and return data
-    inData.close()
-    return(outData.close())
+    return(output)
 
-def fragend_pairs(pairIn, fasta, resite ,maxDistance, pairOut = []):
+def fragendPairs(pairIn, fasta, resite ,maxDistance, fragendOut):
     ''' Function identifies and reports upstream fragends for HiC read pairs. The
     function takes 5 arguments:
     
@@ -142,55 +136,54 @@ def fragend_pairs(pairIn, fasta, resite ,maxDistance, pairOut = []):
     5)  pairOut - Name of output gzipped file containing fragend ligations.
     
     '''
-    # Create fragend dictionary
-    fragDict = findFragendSites(fasta, resite)
-    # Create variable to find pairs
-    pairCounts = collections.OrderedDict([
-        ('total', 0),
-        ('no fragend', 0),
-        ('fragend too distant', 0),
-        ('intrachromosomal', 0),
-        ('interchromosomal', 0),
-        ('fragend distance', []),
-        ('ligation distance', [])
-    ])
-    # Generate input and output object
-    inData = iohandle.handlein(pairIn)
-    outData = iohandle.handleout(pairOut)
-    # Loop through pairs
-    while True:
-        try:
-            pairData = inData.next()
-        except EOFError:
-            break
+    # Create fragend dictionary and metrics dictionary
+    #fragDict = findFragendSites(fasta, resite)
+    #pickle.dump(fragDict, open('/farm/scratch/rs-bio-lif/rabino01/hic_test/fragDict', 'wb'))
+    fragDict = pickle.load(open('/farm/scratch/rs-bio-lif/rabino01/hic_test/fragDict'))
+    fragendCounts = collections.defaultdict(int)
+    fragendCounts['fragDist'] = []
+    fragendCounts['ligDist'] = []
+    # Open input and output file
+    if pairIn.endswith('.gz'):
+        inFile = gzip.open(pairIn, 'r')
+    else:
+        inFile = open(pairIn, 'r')
+    if fragendOut.endswith('.gz'):
+        outFile = gzip.open(fragendOut, 'w')
+    else:
+        outFile = open(fragendOut, 'w')
+    for pair in inFile:
+        pair = pair.strip().split('\t')
         # Count entries
-        pairCounts['total'] += 1
+        fragendCounts['total'] += 1
         # Create output containg fragend data
-        output = downstream([pairData[0:4],pairData[4:8]], fragDict)
+        output = downstream([pair[0:4],pair[4:8]], fragDict)
         # Skip reads without identified fragends
         if output[0][1] == None or output[1][1] == None:
-            pairCounts['no fragend'] += 1
+            fragendCounts['none'] += 1
             continue
         # Add fragend distance data for pairs with fragends
-        pairCounts['fragend distance'].extend([
+        fragendCounts['fragDist'].extend([
             output[0][3],
             output[1][3] 
         ])
         # Count and skip reads too distant from the fragend
         if output[0][3] > maxDistance or output[1][3] > maxDistance:
-            pairCounts['fragend too distant'] += 1
+            fragendCounts['distant'] += 1
             continue
         # Save to file accepted ligation pairs
-        outData.add(output[0][0:3] + output[1][0:3])
+        outData = '\t'.join(map(str,output[0][0:3] + output[1][0:3]))
+        outFile.write(outData + '\n')
         # Count interchromosomal ligations 
         if output[0][0] != output[1][0]:
-            pairCounts['interchromosomal'] += 1
+            fragendCounts['interchromosomal'] += 1
             # Count intrachromosomal ligations and store distance
         else:
-            pairCounts['intrachromosomal'] += 1
-            pairCounts['ligation distance'].append(
+            fragendCounts['intrachromosomal'] += 1
+            fragendCounts['ligDist'].append(
                 abs(output[0][1] - output[1][1])
             )
     # Close files and return data
-    inData.close()
-    return(outData.close(),pairCounts)
+    inFile.close()
+    outFile.close()
+    return(fragendCounts)

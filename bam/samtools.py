@@ -87,7 +87,7 @@ def sort(inFile, outFile, name = False, threads = 1,
     if inFile.endswith('.bam'):
         outputCommand = ''
     elif inFile.endswith('.sam'):
-        outputCommand = samtools_sam2bam(
+        outputCommand = sam2bam(
             inSam = inFile,
             outBam = inFile[:-4] + '.bam',
             path = path,
