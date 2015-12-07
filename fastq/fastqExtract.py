@@ -96,8 +96,7 @@ def writeFromPipe2(fileName, pipes):
     # Open output file
     fileOut = gzip.open(fileName, 'wb')
     sp = subprocess.Popen('gzip', stdout = fileOut,
-        stdin = subprocess.PIPE, bufsize = -1)
-    count = 0
+        stdin = subprocess.PIPE)
     # Write to output file
     while True:
         try:
@@ -105,15 +104,10 @@ def writeFromPipe2(fileName, pipes):
         except EOFError:
             break
         sp.stdin.write(read)
-        count += 1
-        if not (count % 100000):
-            print str(count) + ' written'
     # Close files and pipes
-    print 'Write loop closed'
-    print sp.poll()
+    sp.communicate()
     fileOut.close()
     pipes[0].close()
-    print "Finished writing"
 
 def randomPair(read1In, read2In, read1Out, read2Out, number):
     ''' Extract random paired end read '''
