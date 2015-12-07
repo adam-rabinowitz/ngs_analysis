@@ -137,9 +137,7 @@ def fragendPairs(pairIn, fasta, resite ,maxDistance, fragendOut):
     
     '''
     # Create fragend dictionary and metrics dictionary
-    #fragDict = findFragendSites(fasta, resite)
-    #pickle.dump(fragDict, open('/farm/scratch/rs-bio-lif/rabino01/hic_test/fragDict', 'wb'))
-    fragDict = pickle.load(open('/farm/scratch/rs-bio-lif/rabino01/hic_test/fragDict'))
+    fragDict = findFragendSites(fasta, resite)
     fragendCounts = collections.defaultdict(int)
     fragendCounts['fragDist'] = []
     fragendCounts['ligDist'] = []

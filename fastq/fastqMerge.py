@@ -52,7 +52,7 @@ def mergeLabelPair(fastqIn1, fastqIn2, fastqOut, label1=':1', label2=':2'):
     outputPipe.close()
     outputProcess.join()
 
-def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 18,
+def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 20,
     label1=':1', label2=':2'):
     ''' Function merges two paired FASTQ files into a single FASTQ file.
     FASTQ entries are trimmed to not extend beyong a supplied trim
@@ -85,7 +85,6 @@ def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 18,
     # Create output dictionary and key variables
     metrics = {'total' : 0, 'short': 0, 'trim1': 0, 'trim2' : 0}
     seqLength = len(trimSeq)
-    minTrim = minLength - seqLength
     # Extract labelled reads and save to output
     while True:
         try:
@@ -105,7 +104,7 @@ def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 18,
             read1Trim = None
         else:
             read1Trim = read1Loc + seqLength
-        if read1Trim and read1Trim < minTrim:
+        if read1Trim and read1Trim < minLength:
             metrics['short'] += 1
             continue
         # Set trim length for read2 and count and skip if too short
@@ -113,15 +112,15 @@ def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 18,
             read2Trim = None
         else:
             read2Trim = read2Loc + seqLength
-        if read2Trim and read2Trim < minTrim:
+        if read2Trim and read2Trim < minLength:
             metrics['short'] +=1
             continue
         # Trim reads if required
-        if read1Trim:
+        if read1Trim and read1Trim < len(read1[1]):
             read1[1] = read1[1][:read1Trim]
             read1[3] = read1[3][:read1Trim]
             metrics['trim1'] += 1
-        if read2Trim:
+        if read2Trim and read2Trim < len(read2[1]):
             read2[1] = read2[1][:read2Trim]
             read2[3] = read2[3][:read2Trim]
             metrics['trim2'] += 1

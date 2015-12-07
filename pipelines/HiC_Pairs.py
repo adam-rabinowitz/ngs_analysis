@@ -66,9 +66,9 @@ args.nameSortBam = args.outDir + args.sampleName + "_nSort.bam"
 args.outPairs = args.outDir + args.sampleName + ".readPairs.gz"
 args.outFrags = args.outDir + args.sampleName + ".fragLigations.gz"
 
-#################################################################################
-### Process FASTQ files and perform alignment
-#################################################################################
+###############################################################################
+## Process FASTQ files and perform alignment
+###############################################################################
 # Extract fastq file names
 args.read1, args.read2 = fastqFind.findIlluminaFastq(prefix = args.fastqPrefix,
     dirList = args.fastqDir.split(','), pair = True)
@@ -79,14 +79,15 @@ trimMetrics = fastqMerge.mergeLabelTrimPair(
     fastqOut = args.outFastq,
     trimSeq = args.cutSite,
     label1 = ':1',
-    label2 = ':2'
+    label2 = ':2',
+    minLength = args.minLength
 )
 # Print trim metrics
 print 'Trim Metrics:\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
     'total: ' + str(trimMetrics['total']),
     'too short: ' + str(trimMetrics['short']),
     'read1 trim: ' + str(trimMetrics['trim1']),
-    'read2 trim: ' + str(trimMetrics['trim1'])
+    'read2 trim: ' + str(trimMetrics['trim2'])
 )
 # Generate align command
 alignCommand = fastqAlign.bwaMemAlign(
