@@ -89,7 +89,7 @@ def processPairs(pairs, pairOut, rmDup, rmConcord, maxSize):
     duplicates = pairCount['total'] - pairCount['unique']
     pairCount['dupratio'] = '%.3f' %(duplicates / float(pairCount['total']))
     pairCount['conratio'] = '%.3f' %(pairCount['concorduni'] /
-        float(pairCount['total']))
+        float(pairCount['unique']))
     # Close file and return data
     outFile.close()
     return(pairCount)
