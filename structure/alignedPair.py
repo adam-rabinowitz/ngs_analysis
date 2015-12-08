@@ -60,8 +60,7 @@ def processPairs(pairs, pairOut, rmDup, rmConcord, maxSize):
     # Create counter
     pairCount = collections.defaultdict(int)
     # Open output file process
-    outProcess, outPipe = gzipFile.writeFromPipeProcess(
-        fileName = pairOut, shell = True)
+    outObject = gzipFile.writeProcessObject(fileName = pairOut, shell = True)
     # Loop through pairs
     for pair in sorted(pairs):
         # Extract count and duplicates
@@ -80,10 +79,12 @@ def processPairs(pairs, pairOut, rmDup, rmConcord, maxSize):
         # Output data with duplicates processed
         outData = '\t'.join(map(str,pair)) + '\n'
         if rmDup:
-            outPipe.send(outData)
+            outObject.add(outData)
         else:
             for _ in range(count):
                 outPipe.send(outData)
+    # Close output object
+    outObject.close()
 
     # Calculate duplicate and count ratios
     duplicates = pairCount['total'] - pairCount['unique']
