@@ -56,59 +56,6 @@ def readToPipeProcess(fastqFile):
     # Return pipe
     return(process, pipes[0])
 
-def writeFromPipe(fileName, pipes):
-    ''' Write FASTQ or FASTA file 
-    1)  fastqFile - Full path to output FASTQ file
-    '''
-    # Close unused pipes
-    pipes[1].close()
-    # Open outfile dependant on prefix
-    if fileName.endswith('.gz'):
-        outFile = gzip.open(fileName, 'w')
-    else:
-        outFile = open(fileName, 'w')
-    # Write to output file
-    while True:
-        try:
-            read = pipes[0].recv()
-        except EOFError:
-            break
-        outFile.write(read)
-    # Close files and pipes
-    outFile.close()
-    pipes[0].close()
-
-def writeFromPipeProcess(fastqFile):
-    # Create pipes and process
-    pipes = multiprocessing.Pipe('False')
-    process = multiprocessing.Process(
-        target = writeFromPipe,
-        args = (fastqFile, pipes)
-    )
-    process.start()
-    pipes[0].close()
-    # Return process and pipes
-    return(process, pipes[1])
-
-def writeFromPipe2(fileName, pipes):
-    # Close unused pipes
-    pipes[1].close()
-    # Open output file
-    fileOut = gzip.open(fileName, 'wb')
-    sp = subprocess.Popen('gzip', stdout = fileOut,
-        stdin = subprocess.PIPE)
-    # Write to output file
-    while True:
-        try:
-            read = pipes[0].recv()
-        except EOFError:
-            break
-        sp.stdin.write(read)
-    # Close files and pipes
-    sp.communicate()
-    fileOut.close()
-    pipes[0].close()
-
 def randomPair(read1In, read2In, read1Out, read2Out, number):
     ''' Extract random paired end read '''
     # Count reads in file
@@ -169,19 +116,6 @@ def randomPair(read1In, read2In, read1Out, read2Out, number):
     read2InProcess.join()
     read1OutProcess.join()
     read2OutProcess.join()
-
-import os
-import subprocess
-from cStringIO import StringIO
-
-def read2Pipe2(fastqFile, pipe):
-    p = subprocess.Popen(["zcat", fastqFile], stdout = subprocess.PIPE)
-    f = StringIO(p.communicate()[0])
-    assert p.returncode == 0
-    for title, seq, qual in FastqGeneralIterator(f):
-        pipe.send(['@' + title, seq, '+', qual])
-    pipe.close()
-    
 
 def extractRandom(read1In, read2In, read1Out, read2Out, number = 100000):
     ''' This function generates and reutrns a command to extracts random
