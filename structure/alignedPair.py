@@ -3,6 +3,7 @@ import pysam
 import collections
 import gzip
 from ngs_analysis.system import iohandle
+from general_functions import gzipFile
 
 def concordant(reads, maxSize):
     ''' Function to find concordant pairs. Input is a list/tuple
@@ -58,12 +59,10 @@ def processPairs(pairs, pairOut, rmDup, rmConcord, maxSize):
     '''
     # Create counter
     pairCount = collections.defaultdict(int)
-    # Open output file
-    if pairOut.endswith('.gz'):
-        outFile = gzip.open(pairOut, 'w')
-    else:
-        outFile = open(pairOut, 'w')
-    # Open output and loop through input
+    # Open output file process
+    outProcess, outPipe = gzipFile.writeFromPipeProcess(
+        fileName = pairOut, shell = True)
+    # Loop through pairs
     for pair in sorted(pairs):
         # Extract count and duplicates
         count = pairs[pair]
@@ -81,10 +80,11 @@ def processPairs(pairs, pairOut, rmDup, rmConcord, maxSize):
         # Output data with duplicates processed
         outData = '\t'.join(map(str,pair)) + '\n'
         if rmDup:
-            outFile.write(outData)
+            outPipe.send(outData)
         else:
             for _ in range(count):
-                outFile.write(outData)
+                outPipe.send(outData)
+
     # Calculate duplicate and count ratios
     duplicates = pairCount['total'] - pairCount['unique']
     pairCount['dupratio'] = '%.3f' %(duplicates / float(pairCount['total']))
