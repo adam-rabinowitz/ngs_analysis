@@ -3,7 +3,7 @@ import multiprocessing
 import gzip
 import re
 from ngs_analysis.fastq import fastqExtract
-from general_functions import gzipFile
+from general_functions import writeFile
 
 def mergeLabelPair(fastqIn1, fastqIn2, fastqOut, label1=':1', label2=':2'):
     ''' Function merges two FASTQ files into a single FASTQ file.
@@ -19,7 +19,7 @@ def mergeLabelPair(fastqIn1, fastqIn2, fastqOut, label1=':1', label2=':2'):
     
     '''
     # Open input and output process
-    outputProcess, outputPipe = gzipFile.writeFromPipeProcess(
+    outputProcess, outputPipe = writeFile.writeProcess(
         fileName = fastqOut, shell = True)
     input1Process, input1Pipe = fastqExtract.readToPipeProcess(fastqIn1)
     input2Process, input2Pipe = fastqExtract.readToPipeProcess(fastqIn2)

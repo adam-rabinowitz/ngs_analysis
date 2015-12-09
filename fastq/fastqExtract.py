@@ -1,24 +1,18 @@
-from Bio.SeqIO.QualityIO import FastqGeneralIterator
 import gzip
 import random
 import multiprocessing
 import subprocess
+import itertools
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from general_functions import writeFile
 
-def readToPipe(fastqFile, pipes):
-    ''' Function parses a FASTQ file using Bio.SeqIO and add individual
-    fASTQ reads to a supplied multiprocessing pipe. The function closes
-    the pipe when all input FASTQ files are processed. Function takes
-    two arguments:
+def fastqGenerator(fastqFile):
+    ''' Creates a generator that parses FASTQ files using the 
+    FastqGeneralIterator in Bio.SeqIO. Function takes one argument:
     
-    1)  fastqFile - A string of the FASTQ file path or a python list
-        containing a series of FASTQ file paths.
-    2)  pipes - A pair of multiprocessing connection objects created
-        using the multiprocessing.Pipe('False') command.
-            
+    1)  fastqFile - Path to FASTQ file or a list of paths.
+    
     '''
-    # Close unsused receive pipe
-    pipes[0].close()
     # Process input file(s)
     if isinstance(fastqFile, str):
         fastqFile = [fastqFile]
@@ -31,11 +25,55 @@ def readToPipe(fastqFile, pipes):
             readFile = open
         # Create output and add to pipe
         for title, seq, qual in FastqGeneralIterator(readFile(f)):
-            pipes[1].send('@' + title + '\n' + seq + '\n' '+' '\n' + qual)
+            yield('@' + title + '\n' + seq + '\n' '+' '\n' + qual)
+
+def readToPipe(fastqFile, pipes):
+    dog = 1
+    ''' Function extract reads from a FASTQ file using fastqGenerator
+    and adds reads to a pipe. The function closes the pipe when all
+    FASTQ reads are processed. Function takes two arguments:
+    
+    1)  fastqFile - Path to FASTQ file or a list of paths.
+    2)  pipes - A pair of multiprocessing connection objects created
+        using the multiprocessing.Pipe function.
+    
+    '''
+    # Close unsused receive pipe
+    pipes[0].close()
+    # Add reads to pipe
+    for f in fastqGenerator(fastqFile):
+        pipes[1].send(f)
     # Close send pipe
     pipes[1].close()
 
-class readProcessObject(object):
+class readFastq(object):
+    ''' Creates object to handle reading fastq files. The FASTQ files
+    are parsed using the FastqGeneralIteratorFunction from the Bio.SeqIO
+    module. Function takes one argument:
+    
+    1)  fastqFile - Full path to fastq file
+    
+    Object has two functions:
+    
+    1)  next - Returns the next fastq read as a string. Raises an
+        EOFError if there is no futher reads.
+    2)  close - Closes process and the pipe communicating with it.
+    
+    '''
+    
+    
+    def __init__(self, fastqFile):
+        # Store FASTQ files and create generator
+        self.fastqFile = fastqFile
+        self.generator = fastqGenerator(self.fastqFile)
+     
+    def __iter__(self):
+        return(self)
+    
+    def next(self):
+        return(self.generator.next())
+
+class readFastqProcess(object):
     ''' Creates object to handle reading fastq files in a seperate
     process. Function takes one argument:
     
@@ -50,28 +88,46 @@ class readProcessObject(object):
     '''
     
     def __init__(self, fastqFile):
+        # Create pipes
         self.pipes = multiprocessing.Pipe(False)
+        # Create and start process
         self.process = multiprocessing.Process(
             target = readToPipe,
             args = (fastqFile, self.pipes)
         )
         self.process.start()
+        # Close input pipe
         self.pipes[1].close()
     
+    def __enter__(self):
+        return(self)
+    
+    def __iter__(self):
+        return(self)
+    
     def next(self):
-        return(self.pipes[0].recv())
+        try:
+            return(self.pipes[0].recv())
+        except EOFError:
+            raise StopIteration
     
     def close(self):
         self.pipes[0].close()
         self.process.join()
+    
+    def __del__(self):
+        self.close()
+    
+    def __exit__(self):
+        self.close
 
 def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
     ''' Extract random paired end read '''
     # Count reads in file
     if fastqIn1.endswith('.gz'):
-        readCount = subprocess.check_output(['zgrep', '-c', '$', fastqIn1])
+        readCount = subprocess.check_output(['zgrep', '-c', '$', fastqIn2])
     else:
-        readCount = subprocess.check_output(['grep', '-c', '$', fastqIn1])
+        readCount = subprocess.check_output(['grep', '-c', '$', fastqIn2])
     readCount = int(readCount.strip()) / 4
     # Select which reads to extract
     random.seed(1)
@@ -80,22 +136,20 @@ def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
         min(readCount,number)
     )
     selected.sort(reverse = True)
-    # Create processes to read input FASTQ files
-    read1In = readProcessObject(fastqIn1)
-    read2In = readProcessObject(fastqIn2)
-    # Create processes to write output FASTQ files
-    read1Out = writeFile.writeProcess(fastqOut1)
-    read2Out = writeFile.writeProcess(fastqOut2)
     # Select random reads
     nextRead = selected.pop()
     readCount = 0
-    # Extract desired reads
+    # Create pbjects
+    read1In = readFastqProcess(fastqIn1)
+    read2In = readFastqProcess(fastqIn2)
+    read1Out = writeFile.writeFileProcess(fastqOut1)
+    read2Out = writeFile.writeFileProcess(fastqOut2, shell=True)
+    # Loop through fastq files
     while True:
-        # Extract reads or break loop
         try:
             read1 = read1In.next()
             read2 = read2In.next()
-        except EOFError:
+        except StopIteration:
             break
         # Find the next random read
         if readCount == nextRead:
@@ -113,14 +167,16 @@ def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
             except IndexError:
                 nextRead = 0
         readCount += 1
+    print 'End Read In'
     # Check that all reads have been extracted
-    if selected:
-        raise ValueError('Not all read numbers extracted')
-    # Close pipes and processes
     read1In.close()
     read2In.close()
+    print 'In Processes Closed'
     read1Out.close()
     read2Out.close()
+    print 'Out Processes Closed'
+    if selected:
+        raise ValueError('Not all read numbers extracted')
 
 def extractRandom(read1In, read2In, read1Out, read2Out, number = 100000):
     ''' This function generates and reutrns a command to extracts random
