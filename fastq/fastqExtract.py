@@ -2,11 +2,42 @@ import gzip
 import random
 import multiprocessing
 import subprocess
-import itertools
+import cStringIO
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from general_functions import writeFile
 
-def fastqGenerator(fastqFile):
+def fastqCount(fastqFile, shell = True):
+    ''' Creates a generator that parses FASTQ files using the 
+    FastqGeneralIterator in Bio.SeqIO. Function takes one argument:
+    
+    1)  fastqFile - Path to FASTQ file or a list of paths.
+    
+    '''
+    # Process input file(s)
+    if isinstance(fastqFile, str):
+        fastqFile = [fastqFile]
+    count = 0
+    # Loop through fastq files and add contents to pipe
+    for f in fastqFile:
+        # Create open file command
+        if shell and f.endswith('.gz'):
+            sp = subprocess.Popen(["zcat", f], stdout = subprocess.PIPE)
+            fh = cStringIO.StringIO(sp.communicate()[0])
+        elif f.endswith('.gz'):
+            fh = gzip.open(f)
+        else:
+            fh = open(f)
+        # Create output and add to pipe
+        for read in FastqGeneralIterator(fh):
+            count += 1
+        try:
+            fh.close()
+        except AttributeError:
+            continue
+    # Return count
+    return(count)
+
+def fastqGenerator(fastqFile, shell = True):
     ''' Creates a generator that parses FASTQ files using the 
     FastqGeneralIterator in Bio.SeqIO. Function takes one argument:
     
@@ -19,16 +50,22 @@ def fastqGenerator(fastqFile):
     # Loop through fastq files and add contents to pipe
     for f in fastqFile:
         # Create open file command
-        if f.endswith('.gz'):
-            readFile = gzip.open
+        if shell and f.endswith('.gz'):
+            sp = subprocess.Popen(["zcat", f], stdout = subprocess.PIPE)
+            fh = cStringIO.StringIO(sp.communicate()[0])
+        elif f.endswith('.gz'):
+            fh = gzip.open(f)
         else:
-            readFile = open
+            fh = open(f)
         # Create output and add to pipe
-        for title, seq, qual in FastqGeneralIterator(readFile(f)):
+        for title, seq, qual in FastqGeneralIterator(fh):
             yield('@' + title + '\n' + seq + '\n' '+' '\n' + qual)
+        try:
+            fh.close()
+        except AttributeError:
+            continue
 
 def readToPipe(fastqFile, pipes):
-    dog = 1
     ''' Function extract reads from a FASTQ file using fastqGenerator
     and adds reads to a pipe. The function closes the pipe when all
     FASTQ reads are processed. Function takes two arguments:
@@ -118,17 +155,14 @@ class readFastqProcess(object):
     def __del__(self):
         self.close()
     
-    def __exit__(self):
-        self.close
+    def __exit__(self, type, value, traceback):
+        self.close()
 
 def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
     ''' Extract random paired end read '''
     # Count reads in file
-    if fastqIn1.endswith('.gz'):
-        readCount = subprocess.check_output(['zgrep', '-c', '$', fastqIn2])
-    else:
-        readCount = subprocess.check_output(['grep', '-c', '$', fastqIn2])
-    readCount = int(readCount.strip()) / 4
+    readCount = fastqCount(fastqIn1)
+    print readCount
     # Select which reads to extract
     random.seed(1)
     selected = random.sample(
@@ -143,7 +177,7 @@ def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
     read1In = readFastqProcess(fastqIn1)
     read2In = readFastqProcess(fastqIn2)
     read1Out = writeFile.writeFileProcess(fastqOut1)
-    read2Out = writeFile.writeFileProcess(fastqOut2, shell=True)
+    read2Out = writeFile.writeFileProcess(fastqOut2)
     # Loop through fastq files
     while True:
         try:
@@ -157,8 +191,8 @@ def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
             read1Name = read1.split('\n',1)[0].split(' ',1)[0]
             read2Name = read2.split('\n',1)[0].split(' ',1)[0]
             if read1Name == read2Name:
-                read1Out.add(read1)
-                read2Out.add(read2)
+                read1Out.add(read1 + '\n')
+                read2Out.add(read2 + '\n')
             else:
                 raise IOError('Input FASTQ files are not paired')
             # Extract next read number
@@ -167,14 +201,11 @@ def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
             except IndexError:
                 nextRead = 0
         readCount += 1
-    print 'End Read In'
     # Check that all reads have been extracted
     read1In.close()
     read2In.close()
-    print 'In Processes Closed'
     read1Out.close()
     read2Out.close()
-    print 'Out Processes Closed'
     if selected:
         raise ValueError('Not all read numbers extracted')
 
