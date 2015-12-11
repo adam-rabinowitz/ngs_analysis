@@ -64,6 +64,8 @@ def fastqGenerator(fastqFile, shell = True):
             fh.close()
         except AttributeError:
             continue
+    # Raise stop iteration
+    raise StopIteration
 
 def readToPipe(fastqFile, pipes):
     ''' Function extract reads from a FASTQ file using fastqGenerator
