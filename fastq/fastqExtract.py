@@ -3,6 +3,7 @@ import random
 import multiprocessing
 import subprocess
 import cStringIO
+import itertools
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from general_functions import writeFile
 
@@ -67,7 +68,7 @@ def fastqGenerator(fastqFile, shell = True):
     # Raise stop iteration
     raise StopIteration
 
-def readToPipe(fastqFile, pipes):
+def readToPipe(fastqFile, pipes, shell = True):
     ''' Function extract reads from a FASTQ file using fastqGenerator
     and adds reads to a pipe. The function closes the pipe when all
     FASTQ reads are processed. Function takes two arguments:
@@ -80,7 +81,7 @@ def readToPipe(fastqFile, pipes):
     # Close unsused receive pipe
     pipes[0].close()
     # Add reads to pipe
-    for f in fastqGenerator(fastqFile):
+    for f in fastqGenerator(fastqFile, shell):
         pipes[1].send(f)
     # Close send pipe
     pipes[1].close()
@@ -101,10 +102,11 @@ class readFastq(object):
     '''
     
     
-    def __init__(self, fastqFile):
+    def __init__(self, fastqFile, shell = True):
         # Store FASTQ files and create generator
         self.fastqFile = fastqFile
-        self.generator = fastqGenerator(self.fastqFile)
+        self.shell = shell
+        self.generator = fastqGenerator(self.fastqFile, self.shell)
      
     def __iter__(self):
         return(self)
@@ -126,13 +128,16 @@ class readFastqProcess(object):
     
     '''
     
-    def __init__(self, fastqFile):
+    def __init__(self, fastqFile, shell = True):
+        # Store suppplied variables
+        self.fastqFile = fastqFile
+        self.shell = shell
         # Create pipes
         self.pipes = multiprocessing.Pipe(False)
         # Create and start process
         self.process = multiprocessing.Process(
             target = readToPipe,
-            args = (fastqFile, self.pipes)
+            args = (fastqFile, self.pipes, self.shell)
         )
         self.process.start()
         # Close input pipe
@@ -160,11 +165,10 @@ class readFastqProcess(object):
     def __exit__(self, type, value, traceback):
         self.close()
 
-def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
+def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number, shell = True):
     ''' Extract random paired end read '''
     # Count reads in file
     readCount = fastqCount(fastqIn1)
-    print readCount
     # Select which reads to extract
     random.seed(1)
     selected = random.sample(
@@ -176,17 +180,12 @@ def randomPair(fastqIn1, fastqIn2, fastqOut1, fastqOut2, number):
     nextRead = selected.pop()
     readCount = 0
     # Create pbjects
-    read1In = readFastqProcess(fastqIn1)
-    read2In = readFastqProcess(fastqIn2)
-    read1Out = writeFile.writeFileProcess(fastqOut1)
-    read2Out = writeFile.writeFileProcess(fastqOut2)
+    read1In = readFastqProcess(fastqIn1, shell)
+    read2In = readFastqProcess(fastqIn2, shell)
+    read1Out = writeFile.writeFileProcess(fastqOut1, shell)
+    read2Out = writeFile.writeFileProcess(fastqOut2, shell)
     # Loop through fastq files
-    while True:
-        try:
-            read1 = read1In.next()
-            read2 = read2In.next()
-        except StopIteration:
-            break
+    for read1, read2 in itertools.izip(read1In, read2In):
         # Find the next random read
         if readCount == nextRead:
             # Check for matching read names and write reads

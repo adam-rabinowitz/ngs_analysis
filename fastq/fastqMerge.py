@@ -2,6 +2,7 @@
 import multiprocessing
 import gzip
 import re
+import itertools
 from ngs_analysis.fastq import fastqExtract
 from general_functions import writeFile
 
@@ -19,17 +20,11 @@ def mergeLabelPair(fastqIn1, fastqIn2, fastqOut, label1=':1', label2=':2'):
     
     '''
     # Open input and output process
-    outputProcess, outputPipe = writeFile.writeProcess(
-        fileName = fastqOut, shell = True)
-    input1Process, input1Pipe = fastqExtract.readToPipeProcess(fastqIn1)
-    input2Process, input2Pipe = fastqExtract.readToPipeProcess(fastqIn2)
+    output = writeFile.writeFileProcess(fastqOut)
+    input1 = fastqExtract.readFastqProcess(fastqIn1)
+    input2 = fastqExtract.readFastqProcess(fastqIn2)
     # Extract labelled reads and save to output
-    while True:
-        try:
-            read1 = input1Pipe.recv()
-            read2 = input2Pipe.recv()
-        except EOFError:
-            break
+    for read1, read2 in itertools.izip(input1, input2):
         # Extract read ID and check for equality
         read1Header, read1Remainder = read1.split('\n' ,1)
         read1Header = read1Header.split(' ', 1)
@@ -40,19 +35,16 @@ def mergeLabelPair(fastqIn1, fastqIn2, fastqOut, label1=':1', label2=':2'):
         else:
             read1Header[0] += label1
             read2Header[0] += label2
-            outputPipe.send('%s\n%s\n%s\n%s\n' %(
+            output.add('%s\n%s\n%s\n%s\n' %(
                 ' '.join(read1Header),
                 read1Remainder,
                 ' '.join(read2Header),
                 read2Remainder
             ))
     # Close pipes and processes
-    input1Pipe.close()
-    input2Pipe.close()
-    input1Process.join()
-    input2Process.join()
-    outputPipe.close()
-    outputProcess.join()
+    input1.close()
+    input2.close()
+    output.close()
 
 def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 20,
     label1=':1', label2=':2'):
@@ -80,21 +72,15 @@ def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 20,
     3)  trim1 - Number of acceptable pairs with read1 trimmed.
     4)  trim2 - Number of acceptable pairs with read2 trimmed.
     '''
-    # Open input and output process
-    outputProcess, outputPipe = gzipFile.writeFromPipeProcess(
-        fileName = fastqOut, shell = True)
-    input1Process, input1Pipe = fastqExtract.readToPipeProcess(fastqIn1)
-    input2Process, input2Pipe = fastqExtract.readToPipeProcess(fastqIn2)
     # Create output dictionary and key variables
     metrics = {'total' : 0, 'short': 0, 'trim1': 0, 'trim2' : 0}
     seqLength = len(trimSeq)
+    # Open input and output process
+    input1 = fastqExtract.readFastqProcess(fastqIn1)
+    input2 = fastqExtract.readFastqProcess(fastqIn2)
+    output = writeFile.writeFileProcess(fastqOut)
     # Extract labelled reads and save to output
-    while True:
-        try:
-            read1 = input1Pipe.recv()
-            read2 = input2Pipe.recv()
-        except EOFError:
-            break
+    for read1, read2 in itertools.izip(input1, input2)
         # Count total reads
         metrics['total'] += 1
         # Extract elements of read and identify trim sequence
@@ -137,17 +123,14 @@ def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 20,
             read2Head[0] += label2
             read2[0] = ' '.join(read2Head)
         # Save to file
-        outputPipe.send('%s\n%s\n' %(
+        output.add('%s\n%s\n' %(
             '\n'.join(read1),
             '\n'.join(read2)
         ))
-    # Close pipes and processes
-    input1Pipe.close()
-    input2Pipe.close()
-    input1Process.join()
-    input2Process.join()
-    outputPipe.close()
-    outputProcess.join()
+    # Close input and output objects
+    input1.close()
+    input2.close()
+    output.close()
     # Return metrics
     return(metrics)
 

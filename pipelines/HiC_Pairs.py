@@ -89,108 +89,108 @@ print 'Trim Metrics:\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
     'read1 trim: ' + str(trimMetrics['trim1']),
     'read2 trim: ' + str(trimMetrics['trim2'])
 )
-# Generate align command
-alignCommand = fastqAlign.bwaMemAlign(
-    index = args.bwaFasta,
-    outSam = args.outSam,
-    read1 = args.outFastq,
-    path = args.bwa,
-    threads = str(args.threads),
-    markSecondary = True,
-    check = True
-)
-# Generate sort command
-sortCommand = samtools.sort(
-    inFile = args.outSam,
-    outFile = args.nameSortBam,
-    name = True,
-    threads = str(args.threads),
-    memory = '2G',
-    delete = True,
-    path = 'samtools'
-)
-# Merge commands and run
-alignSort = '%s && %s' %(alignCommand, sortCommand)
-subprocess.check_output(alignSort, shell = True, stderr=subprocess.STDOUT)
-
+## Generate align command
+#alignCommand = fastqAlign.bwaMemAlign(
+#    index = args.bwaFasta,
+#    outSam = args.outSam,
+#    read1 = args.outFastq,
+#    path = args.bwa,
+#    threads = str(args.threads),
+#    markSecondary = True,
+#    check = True
+#)
+## Generate sort command
+#sortCommand = samtools.sort(
+#    inFile = args.outSam,
+#    outFile = args.nameSortBam,
+#    name = True,
+#    threads = str(args.threads),
+#    memory = '2G',
+#    delete = True,
+#    path = 'samtools'
+#)
+## Merge commands and run
+#alignSort = '%s && %s' %(alignCommand, sortCommand)
+#subprocess.check_output(alignSort, shell = True, stderr=subprocess.STDOUT)
+#
+################################################################################
+### Extract aligned pairs
+################################################################################
+## extract pairs from alignments
+#pairs, alignMetrics = alignedPair.extractPairs(
+#    inBam = args.nameSortBam,
+#    minMapQ = args.minMapQ
+#)
+## Print alignment metrics
+#print 'Alignment Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
+#    'total: ' + str(alignMetrics['total']),
+#    'unmapped: ' + str(alignMetrics['unmapped']),
+#    'poorly mapped: ' + str(alignMetrics['poormap']),
+#    'secondary alignment: ' + str(alignMetrics['secondary']),
+#    'singletons: ' + str(alignMetrics['singletons']),
+#    'multiple alignments: ' + str(alignMetrics['multiple']),
+#    'paired: ' + str(alignMetrics['pairs'])
+#)
+## Process duplicate and concordant reads
+#pairMetrics = alignedPair.processPairs(
+#    pairs = pairs,
+#    pairOut = args.outPairs,
+#    rmDup = True,
+#    rmConcord = args.removeConcordant,
+#    maxSize = args.maxDistance
+#)
+## Print pair statistics
+#print 'Pair Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %( 
+#    'total: ' + str(pairMetrics['total']),
+#    'unique: ' + str(pairMetrics['unique']),
+#    'discordant: ' + str(pairMetrics['discord']),
+#    'unique discordant: ' + str(pairMetrics['discorduni']),
+#    'duplication rate: ' + pairMetrics['dupratio'],
+#    'concordant rate: ' + pairMetrics['conratio']
+#)
+#
 ###############################################################################
-## Extract aligned pairs
+### Extract fragend pairs
 ###############################################################################
-# extract pairs from alignments
-pairs, alignMetrics = alignedPair.extractPairs(
-    inBam = args.nameSortBam,
-    minMapQ = args.minMapQ
-)
-# Print alignment metrics
-print 'Alignment Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
-    'total: ' + str(alignMetrics['total']),
-    'unmapped: ' + str(alignMetrics['unmapped']),
-    'poorly mapped: ' + str(alignMetrics['poormap']),
-    'secondary alignment: ' + str(alignMetrics['secondary']),
-    'singletons: ' + str(alignMetrics['singletons']),
-    'multiple alignments: ' + str(alignMetrics['multiple']),
-    'paired: ' + str(alignMetrics['pairs'])
-)
-# Process duplicate and concordant reads
-pairMetrics = alignedPair.processPairs(
-    pairs = pairs,
-    pairOut = args.outPairs,
-    rmDup = True,
-    rmConcord = args.removeConcordant,
-    maxSize = args.maxDistance
-)
-# Print pair statistics
-print 'Pair Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %( 
-    'total: ' + str(pairMetrics['total']),
-    'unique: ' + str(pairMetrics['unique']),
-    'discordant: ' + str(pairMetrics['discord']),
-    'unique discordant: ' + str(pairMetrics['discorduni']),
-    'duplication rate: ' + pairMetrics['dupratio'],
-    'concordant rate: ' + pairMetrics['conratio']
-)
-
-##############################################################################
-## Extract fragend pairs
-##############################################################################
-fragendMetrics = fragendPair.fragendPairs(
-    pairIn = args.outPairs,
-    fragendOut = args.outFrags,
-    fasta = args.bwaFasta,
-    maxDistance = args.maxDistance,
-    resite = args.cutSite
-)
-# Remove fragend and ligation distance data
-fragendDist = fragendMetrics.pop('fragDist')
-ligationDist = fragendMetrics.pop('ligDist')
-# Print fragend metrics
-print 'Fragend Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
-    'total: ' + str(fragendMetrics['total']),
-    'no fragend: ' + str(fragendMetrics['none']),
-    'too distant: ' + str(fragendMetrics['distant']),
-    'interchromosomal: ' + str(fragendMetrics['interchromosomal']),
-    'intrachromosomal: ' + str(fragendMetrics['intrachromosomal'])
-)
-## Calclate and print fragend metrics if accepted fragends are present
-fragendCount = float(len(fragendDist))
-if fragendCount > 0:
-    fragendHist = numpy.histogram(
-        fragendDist,
-        bins = [0,100,200,300,400,500,600,700,800,900,1000,float('inf')]
-    )
-    fragendCumFreq = numpy.cumsum(fragendHist[0]) / float(fragendCount)
-    # Print fragend distance data
-    print '\nFragend Distance:'
-    for bin, freq in itertools.izip(fragendHist[1][1:], fragendCumFreq):
-        print '\t<%.0f: %.3f' %(
-            bin,
-            freq
-        )
-    # Process ligation data
-    print '\nIntrachromosomal Ligation Data:'
-    print ('\tmean distance: %.0f\n\t25th percentile: %.0f\n\t50th percentile:' 
-        '%.0f\n\t75th percentile: %.0f') %(
-        numpy.mean(ligationDist),
-        numpy.percentile(ligationDist,25),
-        numpy.percentile(ligationDist,50),
-        numpy.percentile(ligationDist,75)
-    )
+#fragendMetrics = fragendPair.fragendPairs(
+#    pairIn = args.outPairs,
+#    fragendOut = args.outFrags,
+#    fasta = args.bwaFasta,
+#    maxDistance = args.maxDistance,
+#    resite = args.cutSite
+#)
+## Remove fragend and ligation distance data
+#fragendDist = fragendMetrics.pop('fragDist')
+#ligationDist = fragendMetrics.pop('ligDist')
+## Print fragend metrics
+#print 'Fragend Data:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n' %(
+#    'total: ' + str(fragendMetrics['total']),
+#    'no fragend: ' + str(fragendMetrics['none']),
+#    'too distant: ' + str(fragendMetrics['distant']),
+#    'interchromosomal: ' + str(fragendMetrics['interchromosomal']),
+#    'intrachromosomal: ' + str(fragendMetrics['intrachromosomal'])
+#)
+### Calclate and print fragend metrics if accepted fragends are present
+#fragendCount = float(len(fragendDist))
+#if fragendCount > 0:
+#    fragendHist = numpy.histogram(
+#        fragendDist,
+#        bins = [0,100,200,300,400,500,600,700,800,900,1000,float('inf')]
+#    )
+#    fragendCumFreq = numpy.cumsum(fragendHist[0]) / float(fragendCount)
+#    # Print fragend distance data
+#    print '\nFragend Distance:'
+#    for bin, freq in itertools.izip(fragendHist[1][1:], fragendCumFreq):
+#        print '\t<%.0f: %.3f' %(
+#            bin,
+#            freq
+#        )
+#    # Process ligation data
+#    print '\nIntrachromosomal Ligation Data:'
+#    print ('\tmean distance: %.0f\n\t25th percentile: %.0f\n\t50th percentile:' 
+#        '%.0f\n\t75th percentile: %.0f') %(
+#        numpy.mean(ligationDist),
+#        numpy.percentile(ligationDist,25),
+#        numpy.percentile(ligationDist,50),
+#        numpy.percentile(ligationDist,75)
+#    )
