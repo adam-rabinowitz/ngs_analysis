@@ -21,16 +21,16 @@ def concordant(reads, maxSize):
             distance = reads[6] - reads[1]
             if distance < maxSize:
                 # Check that no read extends beyond its pair
-                if (reads[5] - reads[1] >= 0 and
-                    reads[6] - reads[2] >= 0):
+                if (reads[5] >= reads[1] and
+                    reads[6] >= reads[2]):
                     returnVariable = True
         elif reads[3] == '-':
             # Calculate and check read distance:
             distance = reads[2] - reads[5]
             if distance < maxSize:
-                # Check that no portion of read2 is 5' of read1
-                if (reads[2] - reads[6] >= 0 and
-                    reads[1] - reads[5] >= 0):
+                # Check that no read extends beyond its pair
+                if (reads[2] >= reads[6] and
+                    reads[1] >= reads[5]):
                     returnVariable = True
     # Retrun return variable
     return(returnVariable)
@@ -82,7 +82,7 @@ def processPairs(pairs, pairOut, rmDup, rmConcord, maxSize):
             outObject.add(outData)
         else:
             for _ in range(count):
-                outPipe.send(outData)
+                outObject.add(outData)
     # Close file and return data
     outObject.close()
     return(pairCount)
