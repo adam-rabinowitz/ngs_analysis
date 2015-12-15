@@ -5,7 +5,7 @@ from Bio.Seq import Seq
 import bisect
 import collections
 import gzip
-import pickle
+from general_functions import writeFile
 
 def findFragendSites(fasta, resite):
     ''' Function creates FragendDict object. The object contains
@@ -146,10 +146,7 @@ def fragendPairs(pairIn, fasta, resite ,maxDistance, fragendOut):
         inFile = gzip.open(pairIn, 'r')
     else:
         inFile = open(pairIn, 'r')
-    if fragendOut.endswith('.gz'):
-        outFile = gzip.open(fragendOut, 'w')
-    else:
-        outFile = open(fragendOut, 'w')
+    outFile = writeFile.writeFileProcess(fragendOut)
     for pair in inFile:
         pair = pair.strip().split('\t')
         # Count entries
@@ -171,7 +168,7 @@ def fragendPairs(pairIn, fasta, resite ,maxDistance, fragendOut):
             continue
         # Save to file accepted ligation pairs
         outData = '\t'.join(map(str,output[0][0:3] + output[1][0:3]))
-        outFile.write(outData + '\n')
+        outFile.add(outData + '\n')
         # Count interchromosomal ligations 
         if output[0][0] != output[1][0]:
             fragendCounts['interchromosomal'] += 1
