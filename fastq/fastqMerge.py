@@ -80,7 +80,7 @@ def mergeLabelTrimPair(fastqIn1, fastqIn2, trimSeq, fastqOut, minLength = 20,
     input2 = fastqExtract.readFastqProcess(fastqIn2)
     output = writeFile.writeFileProcess(fastqOut)
     # Extract labelled reads and save to output
-    for read1, read2 in itertools.izip(input1, input2)
+    for read1, read2 in itertools.izip(input1, input2):
         # Count total reads
         metrics['total'] += 1
         # Extract elements of read and identify trim sequence
