@@ -1,9 +1,9 @@
 import unittest
 import tempfile
-from ngs_analysis.structure import alignedPair
-import pysam
 import collections
 import os
+import multiprocessing
+from ngs_analysis.structure import alignedPair
 
 class PairTestCase(unittest.TestCase):
     
@@ -21,14 +21,9 @@ class PairTestCase(unittest.TestCase):
         self.pair6 = ('chr1',100,140,'-','chr1',90,130,'+')
         self.pair7 = ('chr1',100,140,'-','chr1',90,141,'+')
         self.pair8 = ('chr1',99,140,'-','chr1',100,130,'+')
-        self.readDict = {
-            self.pair2:1,
-            self.pair3:2,
-            self.pair4:3,
-            self.pair5:1,
-            self.pair6:2
-        }
-        self.alignLog = collections.defaultdict(int)
+        # Create pair list
+        self.pairList = ([self.pair2] + [self.pair3] * 2 + [self.pair4] * 3 +
+            [self.pair5] + [self.pair6] * 2)
     
     def tearDown(self):
         ''' Remove temporary files and directories '''
@@ -41,6 +36,23 @@ class PairTestCase(unittest.TestCase):
             data = f.readlines()
         output = [d.strip().split('\t') for d in data]
         return(output)
+    
+    def processPair(self, rmDup, rmConcord, maxSize):
+        pipes = multiprocessing.Pipe(True)
+        process = multiprocessing.Process(
+            target = alignedPair.processPairs,
+            args = (pipes[0], self.testPair, rmDup, rmConcord, maxSize)
+        )
+        process.start()
+        pipes[0].close()
+        for pair in self.pairList:
+            pipes[1].send(pair)
+        pipes[1].send(None)
+        metrics = pipes[1].recv()
+        pipes[1].close()
+        process.join()
+        return(metrics)
+
 
 class TestPairProcessing(PairTestCase):
     
@@ -64,43 +76,39 @@ class TestPairProcessing(PairTestCase):
     def test_process_concord_duplication(self):
         ''' Test correct processing of concordant and duplicated reads '''
         # Check processing with concordant and duplicates removed
-        pairCount = alignedPair.processPairs(pairs = self.readDict,
-            pairOut = self.testPair, rmDup = True, rmConcord = True,
+        pairMetrics = self.processPair(rmDup = True, rmConcord = True,
             maxSize = 2000)
-        self.assertEqual(self.readFile(), [map(str,self.pair4),
-            map(str,self.pair2), map(str,self.pair3)])
-        self.assertEqual(pairCount, collections.defaultdict(int, {
-            'total':9, 'unique':5, 'concord':3, 'concorduni':2, 'discord':6,
-            'discorduni':3}))
+        self.assertEqual(self.readFile(), [map(str,self.pair2),
+            map(str,self.pair3), map(str,self.pair4)])
+        self.assertEqual(pairMetrics, collections.defaultdict(int, {
+            'total':9, 'unique':5, 'duplicate':4, 'concord':3, 'concorduni':2,
+            'discord':6, 'discorduni':3}))
         # Check processing with duplicates removed
-        pairCount = alignedPair.processPairs(pairs = self.readDict,
-            pairOut = self.testPair, rmDup = True, rmConcord = False,
+        pairMetrics = self.processPair(rmDup = True, rmConcord = False,
             maxSize = 2000)
-        self.assertEqual(self.readFile(), [map(str,self.pair4),
-            map(str,self.pair2), map(str,self.pair3), map(str,self.pair6),
-            map(str,self.pair5)])
-        self.assertEqual(pairCount, collections.defaultdict(int, {
-            'total':9, 'unique':5, 'concord':3, 'concorduni':2, 'discord':6,
-            'discorduni':3}))
+        self.assertEqual(self.readFile(), [map(str,self.pair2),
+            map(str,self.pair3), map(str,self.pair4), map(str,self.pair5),
+            map(str,self.pair6)])
+        self.assertEqual(pairMetrics, collections.defaultdict(int, {
+            'total':9, 'unique':5, 'duplicate':4, 'concord':3, 'concorduni':2,
+            'discord':6, 'discorduni':3}))
         # Check processing with concordant removed
-        pairCount = alignedPair.processPairs(pairs = self.readDict,
-            pairOut = self.testPair, rmDup = False, rmConcord = True,
+        pairMetrics = self.processPair(rmDup = False, rmConcord = True,
             maxSize = 2000)
-        self.assertEqual(self.readFile(), [map(str,self.pair4)] * 3 +
-            [map(str,self.pair2)] + [map(str,self.pair3)] * 2)
-        self.assertEqual(pairCount, collections.defaultdict(int, {
-            'total':9, 'unique':5, 'concord':3, 'concorduni':2, 'discord':6,
-            'discorduni':3}))
+        self.assertEqual(self.readFile(), [map(str,self.pair2)] +
+            [map(str,self.pair3)] * 2 + [map(str,self.pair4)] * 3)
+        self.assertEqual(pairMetrics, collections.defaultdict(int, {
+            'total':9, 'unique':5, 'duplicate':4, 'concord':3, 'concorduni':2,
+            'discord':6, 'discorduni':3}))
         # Check processing with nothing removed
-        pairCount = alignedPair.processPairs(pairs = self.readDict,
-            pairOut = self.testPair, rmDup = False, rmConcord = False,
+        pairMetrics = self.processPair(rmDup = False, rmConcord = False,
             maxSize = 2000)
-        self.assertEqual(self.readFile(), [map(str,self.pair4)] * 3 +
-            [map(str,self.pair2)] + [map(str,self.pair3)] * 2 +
-            [map(str,self.pair6)] * 2 + [map(str,self.pair5)])
-        self.assertEqual(pairCount, collections.defaultdict(int, {
-            'total':9, 'unique':5, 'concord':3, 'concorduni':2, 'discord':6,
-            'discorduni':3}))
+        self.assertEqual(self.readFile(), [map(str,self.pair2)] +
+            [map(str,self.pair3)] * 2 + [map(str,self.pair4)] * 3 +
+            [map(str,self.pair5)] + [map(str,self.pair6)] * 2)
+        self.assertEqual(pairMetrics, collections.defaultdict(int, {
+            'total':9, 'unique':5, 'duplicate':4, 'concord':3, 'concorduni':2,
+            'discord':6, 'discorduni':3}))
 
 
 suite = unittest.TestLoader().loadTestsFromTestCase(TestPairProcessing)
