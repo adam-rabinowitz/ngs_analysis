@@ -2,6 +2,7 @@
 import pysam
 import collections
 import gzip
+import multiprocessing
 from ngs_analysis.system import iohandle
 from general_functions import writeFile
 
@@ -35,7 +36,7 @@ def concordant(reads, maxSize):
     # Retrun return variable
     return(returnVariable)
 
-def processPairs(pairs, pairOut, rmDup, rmConcord, maxSize):
+def processPairs(pipe, pairOut, rmDup, rmConcord, maxSize):
     ''' Function to output read pairs generated from the extract
     function while processing concordant and duplicate reads.
     Function takes five arguments:
@@ -57,37 +58,50 @@ def processPairs(pairs, pairOut, rmDup, rmConcord, maxSize):
     2)  The altered alignLog from the input
     
     '''
-    # Create counter
+    # Create counter and pair set
     pairCount = collections.defaultdict(int)
+    pairSet = set()
     # Open output file process
     outObject = writeFile.writeFileProcess(fileName = pairOut)
     # Loop through pairs
-    for pair in sorted(pairs):
-        # Extract count and duplicates
-        count = pairs[pair]
-        pairCount['total'] += count
-        pairCount['unique'] += 1
-        # Check for concordancy
-        if concordant(pair, maxSize):
-            pairCount['concorduni'] += 1
-            pairCount['concord'] += count
-            if rmConcord:
-                continue
+    while True:
+        # Get pair from pipe
+        pair = pipe.recv()
+        if pair == None:
+            break
+        # Count and check for duplicates pairs
+        pairCount['total'] += 1
+        if pair in pairSet:
+            dup = True
+            pairCount['duplicate'] += 1
         else:
-            pairCount['discorduni'] += 1
-            pairCount['discord'] += count 
-        # Output data with duplicates processed
-        outData = '\t'.join(map(str,pair)) + '\n'
-        if rmDup:
+            dup = False
+            pairCount['unique'] += 1
+            pairSet.add(pair)
+        # Count and check for concordant pairs
+        concord =  concordant(pair, maxSize)
+        if concord:
+            pairCount['concord'] += 1
+            if not dup:
+                pairCount['concorduni'] += 1
+        else:
+            pairCount['discord'] += 1
+            if not dup:
+                pairCount['discorduni'] += 1
+        # Process output
+        if dup and rmDup:
+            continue
+        elif concord and rmConcord:
+            continue
+        else:
+            outData = '\t'.join(map(str,pair)) + '\n'
             outObject.add(outData)
-        else:
-            for _ in range(count):
-                outObject.add(outData)
-    # Close file and return data
+    # Close file, return data and close pipe
     outObject.close()
-    return(pairCount)
+    pipe.send(pairCount)
+    pipe.close()
 
-def extractPairs(inBam, minMapQ):
+def extractPairs(inBam, pairOut, minMapQ, rmDup, rmConcord, maxSize):
     ''' Function to output read pairs generated from the extract
     function while processing concordant and duplicate reads.
     Function takes five arguments:
@@ -106,7 +120,6 @@ def extractPairs(inBam, minMapQ):
     # Open bamfile
     bamFile = pysam.AlignmentFile(inBam, 'rb')
     # Generate dictionaries to store and process data
-    pairDict = collections.defaultdict(int)
     alignCount = collections.defaultdict(int)
     strDict = {True: '-', False: '+'}
     chrDict = {}
@@ -115,6 +128,14 @@ def extractPairs(inBam, minMapQ):
     # Initialise variables to store read data
     currentName = ""
     readList = []
+    # Create process to handle pairs
+    pipes = multiprocessing.Pipe(True)
+    p = multiprocessing.Process(
+        target = processPairs,
+        args = (pipes[0], pairOut, rmDup, rmConcord, maxSize)
+    )
+    p.start()
+    pipes[0].close()
     # Loop through BAM file
     while True:
         try:
@@ -144,7 +165,7 @@ def extractPairs(inBam, minMapQ):
                         read2.reference_end,
                         strDict[read2.is_reverse],
                     )
-                    pairDict[output] += 1
+                    pipes[1].send(output)
                     alignCount['pairs'] += 2
                 # If not, count as multiple alignments
                 else:
@@ -159,6 +180,7 @@ def extractPairs(inBam, minMapQ):
             readList = []
         # Break loop at end of BAM file
         if readName == 'EndOfFile':
+            pipes[1].send(None)
             break
         # Count and skip secondary alignments
         elif (256 & read.flag):
@@ -172,7 +194,11 @@ def extractPairs(inBam, minMapQ):
         # Process reads of sufficient quality
         else:
             readList.append(read)
-    # Close BAM file and return data
+    # Close BAM file
     bamFile.close()
+    # Extract data from process and terminate
+    pairCount = pipes[1].recv()
+    pipes[1].close()
+    p.join()
     # Output data
-    return(pairDict, alignCount)
+    return(alignCount, pairCount)
