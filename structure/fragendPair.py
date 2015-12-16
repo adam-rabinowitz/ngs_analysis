@@ -14,7 +14,7 @@ def findFragendSites(fasta, resite):
     '''
     # Process restriction enzyme size and create output dictionary
     resite = resite.upper()
-    frags = {'chr': [], 'resite': resite}
+    frags = {'resite': resite}
     # Create sequence object for resite and reverse complent
     standard = Seq(resite)
     revcomp = standard.reverse_complement()
@@ -25,7 +25,6 @@ def findFragendSites(fasta, resite):
     for fasta in fastaData:
         # Extract name and sequence
         fName, fSequence = str(fasta.id), str(fasta.seq).upper()
-        frags['chr'].append(fName)
         # Add re sites to dictionary using 1 based index
         forward = nt_search(fSequence, standard)[1:]
         if forward:
@@ -41,7 +40,7 @@ def findFragendSites(fasta, resite):
     fastaHandle.close()
     return(frags)
 
-def downstream(readIn, fragDict, fragOut = []):
+def downstream(readIn, fragDict):
     ''' Function to find the associated fragend for a read. For
     reads aligned to the '+' strand the fragend will be downstream
     of the start of the read. For reads aligned to the '-' strand
@@ -88,7 +87,7 @@ def downstream(readIn, fragDict, fragOut = []):
         distance = None
         # Check relative location of start and end
         if end < start:
-            raise ValueError("End must be more 3' than the start")
+            raise IOError("End must be 'right' of the start")
         # Extract fragends for chromosome and strand
         try:
             fragends = fragDict[(chrom, strand)]
@@ -121,7 +120,10 @@ def downstream(readIn, fragDict, fragOut = []):
                 # Find distance between read and fragend
                 distance = (end - fragLoc) + 1
         # Add output data
-        output.append((chrom, fragLoc, strand, distance))
+        if fragLoc == None:
+            output.append(None)
+        else:
+            output.append((chrom, fragLoc, strand, distance))
     # Close IO and return data
     return(output)
 
@@ -154,7 +156,7 @@ def fragendPairs(pairIn, fasta, resite ,maxDistance, fragendOut):
         # Create output containg fragend data
         output = downstream([pair[0:4],pair[4:8]], fragDict)
         # Skip reads without identified fragends
-        if output[0][1] == None or output[1][1] == None:
+        if output[0] == None or output[1] == None:
             fragendCounts['none'] += 1
             continue
         # Add fragend distance data for pairs with fragends
