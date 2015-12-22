@@ -14,8 +14,8 @@ class InteractionTestCase(unittest.TestCase):
         self.dirName = tempfile.mkdtemp()
         self.inMatrix = self.dirName + '/test.matrix'
         # Create matrix
-        regions = ['chr1:1-10','chr1:11-41','chr2:1-21','chr2:22-30',
-            'chr2:31-46','chr3:1-24']
+        regions = ['chr1:1-10','chr1:11-41','chr1:42-49','chr2:1-21','chr2:22-30',
+            'chr2:31-46','chr2:47-51','chr3:1-24']
         matrix = np.reshape(np.arange(len(regions)**2,dtype=float),
             (len(regions),len(regions)))
         np.savetxt(self.inMatrix, matrix, '%s', '\t', header = '\t'.join(regions),
@@ -33,44 +33,82 @@ class TestMatrixDivision(InteractionTestCase):
     def test_matrix_subdivision(self):
         ''' Check slicing of matrices and data frames '''
         subMatrix = analyseInteraction.subMatrix(self.inMatrix)
-        # Check output for chromosome 1
-        self.assertTrue(np.array_equal(
-            subMatrix.regMatrix['chr1'][0],
-            np.array([
-                [0.,1.],
-                [6.,7.]
-            ])))
+        # Check dataframe for chromosome 1
         df = pd.DataFrame()
-        df['chr'] = np.array(['chr1','chr1'])
-        df['start'] = np.array([1,11])
-        df['end'] = np.array([10,41])
-        self.assertTrue(all(df == subMatrix.regMatrix['chr1'][1]))
-        # Check output for chromosome 2
+        df['chr'] = np.array(['chr1']*3)
+        df['start'] = np.array([1,11,42])
+        df['end'] = np.array([10,41,49])
+        self.assertTrue(all(df == subMatrix.regionData['chr1'][0]))
+        # Check submatrix for chromosome 1
         self.assertTrue(np.array_equal(
-            subMatrix.regMatrix['chr2'][0],
-            np.array([
-                [14.,15.,16.],
-                [20.,21.,22.],
-                [26.,27.,28.]
-            ])))
+            subMatrix.regionData['chr1'][1],
+            np.array(
+                [[0.,1.,2.],
+                [8.,9.,10.],
+                [16.,17.,18.]]
+            )))
+        # Check ditance matrix for chromosome 1
+        self.assertTrue(np.array_equal(
+            subMatrix.regionData['chr1'][2],
+            np.array(
+                [[0.,20.5,40.],
+                [20.5,0.,19.5],
+                [40.,19.5,0.]]
+            )))
+        # Check dataframe for chromosome 2
         df = pd.DataFrame()
-        df['chr'] = np.array(['chr2','chr2','chr2'])
-        df['start'] = np.array([1,22,31])
-        df['end'] = np.array([21,30,46])
-        df.index = [2,3,4]
-        self.assertTrue(all(df == subMatrix.regMatrix['chr2'][1]))
-        # Check output for chromsome 3
+        df['chr'] = np.array(['chr2']*4)
+        df['start'] = np.array([1,22,31,47])
+        df['end'] = np.array([21,30,46,51])
+        df.index = [3,4,5,6]
+        self.assertTrue(all(df == subMatrix.regionData['chr2'][0]))
+        # Check submatrix for chromsome 2
         self.assertTrue(np.array_equal(
-            subMatrix.regMatrix['chr3'][0],
-            np.array([
-                [35.]
-            ])))
+            subMatrix.regionData['chr2'][1],
+            np.array(
+                [[27.,28.,29.,30.],
+                [35.,36.,37.,38.],
+                [43.,44.,45.,46.],
+                [51.,52.,53.,54.]]
+            )))
+        # Check ditance matrix for chromosome 2
+        self.assertTrue(np.array_equal(
+            subMatrix.regionData['chr2'][2],
+            np.array(
+                [[0.,15.,27.5,38.],
+                [15.,0.,12.5,23.],
+                [27.5,12.5,0.,10.5],
+                [38.,23.,10.5,0.]]
+            )))
+        # Check dataframe for chromsome 3
         df = pd.DataFrame()
         df['chr'] = np.array(['chr3'])
         df['start'] = np.array([1])
         df['end'] = np.array([24])
-        df.index = [5]
-        self.assertTrue(all(df == subMatrix.regMatrix['chr3'][1]))
+        df.index = [7]
+        self.assertTrue(all(df == subMatrix.regionData['chr3'][0]))
+        # Check submatrix for chromosome 3
+        self.assertTrue(np.array_equal(
+            subMatrix.regionData['chr3'][1],
+            np.array([
+                [63.]
+            ])))
+        # Check ditance matrix for chromosome 3
+        self.assertTrue(np.array_equal(
+            subMatrix.regionData['chr3'][2],
+            np.array([
+                [0.]
+            ])))
+
+
+class TestMatrixDivision2(InteractionTestCase):
+
+    def test_matrix_subdivision(self):
+        ''' Check slicing of matrices and data frames '''
+        subMatrix = analyseInteraction.subMatrix2(self.inMatrix)
 
 suite = unittest.TestLoader().loadTestsFromTestCase(TestMatrixDivision)
+unittest.TextTestRunner(verbosity=3).run(suite)
+
+suite = unittest.TestLoader().loadTestsFromTestCase(TestMatrixDivision2)
 unittest.TextTestRunner(verbosity=3).run(suite)
