@@ -72,49 +72,49 @@ args.outFrags = args.outDir + args.sampleName + ".fragLigations.gz"
 ###############################################################################
 ## Process FASTQ files and perform alignment
 ###############################################################################
-## Extract fastq file names
-#args.read1, args.read2 = fastqFind.findIlluminaFastq(prefix = args.fastqPrefix,
-#    dirList = args.fastqDir.split(','), pair = True)
-## Trim and merge fastq files
-#trimMetrics = fastqMerge.mergeLabelTrimPair(
-#    fastqIn1 = args.read1,
-#    fastqIn2 = args.read2,
-#    fastqOut = args.outFastq,
-#    trimSeq = args.cutSite,
-#    label1 = ':1',
-#    label2 = ':2',
-#    minLength = args.minLength
-#)
-## Print trim metrics
-#print '\nTrim Metrics:\n\t%s\n\t%s\n\t%s\n\t%s' %(
-#    'total: ' + str(trimMetrics['total']),
-#    'too short: ' + str(trimMetrics['short']),
-#    'read1 trim: ' + str(trimMetrics['trim1']),
-#    'read2 trim: ' + str(trimMetrics['trim2'])
-#)
-## Generate align command
-#alignCommand = fastqAlign.bwaMemAlign(
-#    index = args.bwaFasta,
-#    outSam = args.outSam,
-#    read1 = args.outFastq,
-#    path = args.bwa,
-#    threads = str(args.threads),
-#    markSecondary = True,
-#    check = True
-#)
-## Generate sort command
-#sortCommand = samtools.sort(
-#    inFile = args.outSam,
-#    outFile = args.nameSortBam,
-#    name = True,
-#    threads = str(args.threads),
-#    memory = '2G',
-#    delete = True,
-#    path = 'samtools'
-#)
-## Merge commands and run
-#alignSort = '%s && %s' %(alignCommand, sortCommand)
-#subprocess.check_output(alignSort, shell = True, stderr=subprocess.STDOUT)
+# Extract fastq file names
+args.read1, args.read2 = fastqFind.findIlluminaFastq(prefix = args.fastqPrefix,
+    dirList = args.fastqDir.split(','), pair = True)
+# Trim and merge fastq files
+trimMetrics = fastqMerge.mergeLabelTrimPair(
+    fastqIn1 = args.read1,
+    fastqIn2 = args.read2,
+    fastqOut = args.outFastq,
+    trimSeq = args.cutSite,
+    label1 = ':1',
+    label2 = ':2',
+    minLength = args.minLength
+)
+# Print trim metrics
+print '\nTrim Metrics:\n\t%s\n\t%s\n\t%s\n\t%s' %(
+    'total: ' + str(trimMetrics['total']),
+    'too short: ' + str(trimMetrics['short']),
+    'read1 trim: ' + str(trimMetrics['trim1']),
+    'read2 trim: ' + str(trimMetrics['trim2'])
+)
+# Generate align command
+alignCommand = fastqAlign.bwaMemAlign(
+    index = args.bwaFasta,
+    outSam = args.outSam,
+    read1 = args.outFastq,
+    path = args.bwa,
+    threads = str(args.threads),
+    markSecondary = True,
+    check = True
+)
+# Generate sort command
+sortCommand = samtools.sort(
+    inFile = args.outSam,
+    outFile = args.nameSortBam,
+    name = True,
+    threads = str(args.threads),
+    memory = '2G',
+    delete = True,
+    path = 'samtools'
+)
+# Merge commands and run
+alignSort = '%s && %s' %(alignCommand, sortCommand)
+subprocess.check_output(alignSort, shell = True, stderr=subprocess.STDOUT)
 
 ###############################################################################
 ## Extract aligned pairs
