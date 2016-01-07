@@ -14,10 +14,11 @@ class InteractionTestCase(unittest.TestCase):
         self.dirName = tempfile.mkdtemp()
         self.inMatrix = self.dirName + '/test.matrix'
         # Create matrix
-        regions = ['chr1:1-10','chr1:11-41','chr2:1-21','chr2:22-30',
-            'chr2:31-46','chr3:1-24']
-        matrix = np.reshape(np.arange(len(regions)**2,dtype=float),
-            (len(regions),len(regions)))
+        regions = ['chr1:1-10','chr1:11-41','chr1:42-49','chr2:1-21','chr2:22-30',
+            'chr2:31-46', 'chr2:47-51', 'chr2:52-63', 'chr3:1-24']
+        matrix = np.full((len(regions),len(regions)), 0.125)
+        matrix[5,:] = 0
+        matrix[:,5] = 0
         np.savetxt(self.inMatrix, matrix, '%s', '\t', header = '\t'.join(regions),
             comments = '')
     
@@ -28,49 +29,38 @@ class InteractionTestCase(unittest.TestCase):
                 os.remove(file)
         os.removedirs(self.dirName)
 
-class TestMatrixDivision(InteractionTestCase):
+    def compna(self, s1, s2):
+        ''' Create function to compare series containing nan values '''
+        for v1, v2 in zip(s1, s2):
+            if isinstance(v1, (str, int)):
+                if v1 != v2:
+                    return False
+            elif np.isnan(v1):
+                if not np.isnan(v2):
+                    return False
+            else:
+                if v1 != v2:
+                    return False
+        return True
 
-    def test_matrix_subdivision(self):
-        ''' Check slicing of matrices and data frames '''
-        subMatrix = analyseInteraction.subMatrix(self.inMatrix)
-        # Check output for chromosome 1
-        self.assertTrue(np.array_equal(
-            subMatrix.regMatrix['chr1'][0],
-            np.array([
-                [0.,1.],
-                [6.,7.]
-            ])))
-        df = pd.DataFrame()
-        df['chr'] = np.array(['chr1','chr1'])
-        df['start'] = np.array([1,11])
-        df['end'] = np.array([10,41])
-        self.assertTrue(all(df == subMatrix.regMatrix['chr1'][1]))
-        # Check output for chromosome 2
-        self.assertTrue(np.array_equal(
-            subMatrix.regMatrix['chr2'][0],
-            np.array([
-                [14.,15.,16.],
-                [20.,21.,22.],
-                [26.,27.,28.]
-            ])))
-        df = pd.DataFrame()
-        df['chr'] = np.array(['chr2','chr2','chr2'])
-        df['start'] = np.array([1,22,31])
-        df['end'] = np.array([21,30,46])
-        df.index = [2,3,4]
-        self.assertTrue(all(df == subMatrix.regMatrix['chr2'][1]))
-        # Check output for chromsome 3
-        self.assertTrue(np.array_equal(
-            subMatrix.regMatrix['chr3'][0],
-            np.array([
-                [35.]
-            ])))
-        df = pd.DataFrame()
-        df['chr'] = np.array(['chr3'])
-        df['start'] = np.array([1])
-        df['end'] = np.array([24])
-        df.index = [5]
-        self.assertTrue(all(df == subMatrix.regMatrix['chr3'][1]))
+class TestMatrixDivision(InteractionTestCase):
+    
+    def test_bin_directionality(self):
+        ''' checking bin directionality calculation '''
+        maskMatrix = analyseInteraction.maskMatrix(self.inMatrix)
+        maskMatrix.directionality()
+        df = maskMatrix.binDF
+        self.assertTrue(self.compna(df['group'], pd.Series(
+        ['chr1', 'chr1', 'chr1', 'chr2', 'chr2', np.nan, 'chr2', 'chr2', 'chr3'])))
+        self.assertTrue(self.compna(df['up'], pd.Series(
+            [0, 0.125, 0.25, 0, 0.125, np.nan, 0.25, 0.375, 0])))
+        self.assertTrue(self.compna(df['down'], pd.Series(
+            [0.25, 0.125, 0, 0.375, 0.25, np.nan, 0.125, 0, 0])))
+        self.assertTrue(self.compna(df['inter'], pd.Series(
+            [0.625, 0.625, 0.625, 0.5, 0.5, np.nan, 0.5, 0.5, 0.875])))
+        self.assertTrue(self.compna(df['log2'], pd.Series(
+            [-np.inf, 0, np.inf, -np.inf, -1, np.nan, 1, np.inf, np.nan])))
 
 suite = unittest.TestLoader().loadTestsFromTestCase(TestMatrixDivision)
 unittest.TextTestRunner(verbosity=3).run(suite)
+
