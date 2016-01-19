@@ -1,9 +1,10 @@
 import re
+import gzip
 import collections
 import numpy as np
 import numpy.ma as ma
 import pandas as pd
-
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 class maskMatrix(object):
     
@@ -11,16 +12,17 @@ class maskMatrix(object):
         # Extract bin names
         if matrix.endswith('.gz'):
             with gzip.open(matrix) as inFile:
-                self.binNames = inFile.readline().strip.split('\t')
+                self.binNames = inFile.next().strip().split('\t')
         else:
             with open(matrix) as inFile:
-                self.binNames = inFile.readline().strip().split('\t')
+                self.binNames = inFile.next().strip().split('\t')
         # Create bin dataframe
         binDF = pd.DataFrame()
         binDF['chr'], binDF['start'], binDF['end'] = zip(
             *[re.split(':|-', x) for x in self.binNames])
         binDF[['start', 'end']] = binDF[['start', 'end']].astype(int)
         binDF['chr'] = binDF['chr'].astype(str)
+        binDF['name'] = self.binNames
         binDF['centre'] = np.mean([binDF['start'], binDF['end']], axis=0)
         self.binDF = binDF
         # Open probability matrix and check it is square
@@ -42,10 +44,12 @@ class maskMatrix(object):
         centreArray = np.array(self.binDF['centre'])
         distMatrix = np.abs(centreArray - centreArray[:,None])
         self.distMatrix = ma.masked_array(distMatrix, mask = maskMatrix)
-
-    def directionality(self):
-        # Create series to store data
-        self.binDF['self'] = self.binDF['inter'] = self.binDF['up'] = self.binDF['down'] = self.binDF['log2'] = np.nan
+    
+    def binDirectionOld(self):
+        ''' Extract interaction direction data for bins '''
+        # Create dataframe to store data
+        df = pd.DataFrame(columns = ['self', 'inter', 'up', 'down', 'log2'])
+        self.binDF = pd.concat([self.binDF, df], axis=1)
         # Loop through rows of the matrix
         for rowNo, row in enumerate(self.probMatrix):
             # Set none values if bin is entirely masked
@@ -68,7 +72,7 @@ class maskMatrix(object):
                 else:
                     down = down.sum()
                 # Calculate inter value
-                inter = 1 - selflig - up - down
+                inter = sum(row.data) - selflig - up - down
                 # Calculate log2 value
                 if up == 0:
                     if down == 0:
@@ -82,3 +86,77 @@ class maskMatrix(object):
                 # Store results
                 self.binDF.loc[rowNo,['self','inter','up','down','log2']] = (
                     selflig, inter, up, down, log2)
+    
+    def upDown(array, index):
+        up = array[index-1::-1]
+        down = array[index+1:]
+        return(up, down)
+    
+    def unmaskedPair(a1, a2):
+        maxL = min(len(a1), len(a2))
+        masked = np.logical_or(a1.mask[:maxL], a2.mask[:maxL])
+        indices = np.where(masked == False)
+        return(indices) 
+    
+    def binDirection(self):
+        ''' Extract interaction direction data for bins '''
+        # Create dataframe to store data
+        df = pd.DataFrame(columns = ['self', 'inter', 'up', 'down', 'log2'])
+        self.binDF = pd.concat([self.binDF, df], axis=1)
+        # Loop through rows of the matrix
+        for rowNo, row in enumerate(self.probMatrix):
+            # Set none values if bin is entirely masked
+            if ma.count(row) == 0:
+                continue
+            # Else calculate values
+            else:
+                # Extract up and down arrays
+                up, down = self.upDown(row, rowNo)
+                # Extract probabilities
+                selfProb = row[rowNo].sum()
+                upProb = up.sum()
+                downProb = down.sum()
+                interProb = 1 - upProb - downProb - selfProb
+                # Extract paired bins for log2 calculations
+                indices = self.unmaskedPair(up, down)
+                if indices:
+                    # Calculate sum of paired up and down bins
+                    upSum = up[indices].sum()
+                    downSum = down[indices].sum()
+                    # Calculate log2 ratio
+                    if upSum == 0:
+                        if downSum == 0:
+                            log2 = np.nan
+                        else:
+                            log2 = -np.inf
+                    elif downSum == 0:
+                        log2 = np.inf
+                    else:
+                        log2 = np.log2(upSum/downSum)
+                # Store results
+                self.binDF.loc[rowNo,['self','inter','up','down','log2']] = (
+                    selfprob, interProb, upProb, downProb, log2)
+    
+    def binDistance(self):
+        ''' Extract median interaction distance for bins '''
+        # Create dataframe to store data
+        df = pd.DataFrame(columns = ['dist'])
+        self.binDF = pd.concat([self.binDF, df], axis=1)
+        # Loop through rows of the matrix
+        for rowNo, row in enumerate(self.distMatrix):
+            # Set none values if bin is entirely masked
+            if ma.count(row) == 0:
+                continue
+            # Else calculate values
+            else:
+                # Calculate distance and store results
+                dist = ma.average(row, weights = self.probMatrix[rowNo])
+                self.binDF.loc[rowNo,'dist'] = np.uint32(dist)
+    
+    def combinedDistance(self, fraction = 2/3.0):
+        ''' Extract lowess smooth interaction frequency for dataset '''
+        # Extract probabilities
+        prob = self.probMatrix[~self.probMatrix.mask]
+        dist = self.distMatrix[~self.distMatrix.mask]
+        # Return data
+        return(np.array([dist, prob]).T)
