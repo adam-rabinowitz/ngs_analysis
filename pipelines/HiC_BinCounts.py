@@ -23,7 +23,7 @@ Options:
 import os
 import re
 import numpy as np
-from ngs_analysis.structure import interactionMatrix
+from ngs_analysis.structure import interactionMatrix, analyseInteraction
 from general_functions import docopt
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')
@@ -44,16 +44,21 @@ for f in args['<inputfiles>']:
         raise IOError('Input file %s not foundi' %(f))
 if not os.path.isdir(args['<outdir>']):
     raise IOError('Output directory %s not found' %(args['<outdir>']))
+# Extract and print sample names
+sampleNames = [re.search('([^/]*)\.fragLigations\.gz$',f).group(1) for f in args['<inputfiles>']]
+logData = 'Samples:\n  %s\n' %(
+    '\n  '.join(sampleNames) 
+)
 # Extract and print parameters to create bins
 if args['bed']:
     binData = args['<bedfile>']
-    print 'Parameters:\n\t%s\n\t%s' %(
+    logData += '\nParameters:\n\t%s\n\t%s\n' %(
         'bed file provided',
         'minimum bin count: %s' %(args['<mincount>'])
     )
 else:
     binData = (args['<chrfile>'], args['<binsize>'], args['--equal'])
-    print 'Parameters:\n  %s\n  %s\n  %s' %(
+    logData += '\nParameters:\n  %s\n  %s\n  %s\n' %(
         'max bin size: %s' %(args['<binsize>']),
         'bin size equal: %s' %(args['--equal']),
         'minimum bin count: %s' %(args['<mincount>'])
@@ -62,31 +67,23 @@ else:
 genomeBins = interactionMatrix.genomeBin(binData)
 # Sequentially process input files
 failedBins = np.full(genomeBins.binCount, False, dtype=bool)
-matrixFileList = []
+prefixList = []
 for f in args['<inputfiles>']:
     # Extract sample names
     sampleName = re.search('([^/]*)\.fragLigations.gz$',f).group(1)
     # Create output file prefix
     if args['--label']:
-        outPrefix = args['<outdir>'] + sampleName + '_' + args['--label']
+        prefix = args['<outdir>'] + sampleName + '_' + args['--label']
     else:
-        outPrefix = args['<outdir>'] + sampleName
-    # Create output file names
-    bedFile = outPrefix + '.bed'
-    matrixFile = outPrefix + '.countMatrix.gz'
-    biasFile = outPrefix + '.bias'
-    normMatrixFile = outPrefix + '.normMatrix.gz'
-    # Store file names required for normalisation
-    matrixFileList.append((matrixFile, biasFile, normMatrixFile))
-    # Save bed file
-    genomeBins.writeBed(bedFile)
+        prefix = args['<outdir>'] + sampleName
+    prefixList.append(prefix)
     # Create interaction matrix and save to file
-    countMatrix, logArray = interactionMatrix.generateMatrix(
-        f, genomeBins, args['--threads'])
-    np.savetxt(matrixFile, countMatrix, '%s', '\t',
+    countMatrix, logArray = genomeBins.generateMatrix(
+        f, args['--threads'])
+    np.savetxt(prefix + '.countMatrix.gz', countMatrix, '%s', '\t',
         header = '\t'.join(genomeBins.binNames), comments = '')
-    # Print Interaction Data
-    print '\n%s:\n  Interaction Data:\n%s\n%s\n%s\n%s' %(
+    # Store Interaction Data
+    logData += '\n%s:\n  Interaction Data:\n%s\n%s\n%s\n%s\n' %(
         sampleName,
         '    total: %s' %(logArray[0]),
         '    accepted: %s' %(logArray[3]),
@@ -97,27 +94,38 @@ for f in args['<inputfiles>']:
     colSums = countMatrix.sum(axis=0)
     binsBelowMin = colSums < args['<mincount>']
     failedBins = np.logical_or(failedBins, binsBelowMin)
-    # Print bin data
-    print '  Bin Data:\n%s\n%s\n%s\n%s' %(
+    # Store bin data
+    logData += '  Bin Data:\n%s\n%s\n%s\n%s\n' %(
         '    bin number: %s' %(genomeBins.binCount),
         '    bins below minimum: %s' %(sum(binsBelowMin)),
         '    mean bincount: %.0f' %(np.mean(colSums)),
         '    median bin count: %.0f' %(np.median(colSums))
     )
-# Print combined bin data
-print '\nCombined Samples:\n  Bin Data:\n%s\n%s' %(
+# Extract combined bin data
+logData += '\nCombined Samples:\n  Bin Data:\n%s\n%s\n' %(
     '    bin number: %s' %(genomeBins.binCount),
     '    bins below minimum: %s' %(sum(failedBins))
 )
+# Save log files
+for prefix in prefixList:
+    with open(prefix + '.matrixLog', 'w') as outFile:
+        outFile.write(logData)
 # Normalise matrices
 if sum(failedBins) < genomeBins.binCount:
     # Loop through count matrices
-    for files in matrixFileList:
+    for prefix in prefixList:
         # Normalise matrix
         normMatrix, biasData = interactionMatrix.normaliseMatrix(
-            files[0], failedBins)
-        # Save interactions
-        np.savetxt(files[1], np.array([genomeBins.binNames,biasData]).T,
-            '%s', '\t')
-        np.savetxt(files[2], normMatrix, '%.6f', '\t',
+            prefix + '.countMatrix.gz', failedBins)
+        # Save normalised interactions
+        np.savetxt(prefix + '.normMatrix.gz', normMatrix, '%.6f', '\t',
             header = '\t'.join(genomeBins.binNames), comments = '')
+        # Extract bin level data
+        maskMatrix = analyseInteraction.maskMatrix(prefix + '.normMatrix.gz')
+        maskMatrix.binDF['bias'] = biasData
+        maskMatrix.binDirection()
+        maskMatrix.binDistance()
+        maskMatrix.binDF.to_csv(prefix + '.binData', '\t', '')
+        # Extract global data
+        distance = maskMatrix.combinedDistance(0.1)
+        np.savetxt(prefix + '.dist.gz', distance, '%s', '\t')
