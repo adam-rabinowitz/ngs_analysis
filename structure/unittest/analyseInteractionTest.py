@@ -43,7 +43,7 @@ class InteractionTestCase(unittest.TestCase):
                     return False
         return True
 
-class TestMatrixDivision(InteractionTestCase):
+class TestInteractionAnalysis(InteractionTestCase):
     
     def test_bin_directionality(self):
         ''' checking bin directionality calculation '''
@@ -61,6 +61,13 @@ class TestMatrixDivision(InteractionTestCase):
         self.assertTrue(self.compna(df['log2'], pd.Series(
             [-np.inf, 0, np.inf, -np.inf, -1, np.nan, 1, np.inf, np.nan])))
 
-suite = unittest.TestLoader().loadTestsFromTestCase(TestMatrixDivision)
+    def test_bin_distance(self):
+        maskMatrix = analyseInteraction.maskMatrix(self.inMatrix)
+        maskMatrix.directionality()
+        maskMatrix.distance()
+        maskMatrix.lowessDistance()
+
+
+suite = unittest.TestLoader().loadTestsFromTestCase(TestInteractionAnalysis)
 unittest.TextTestRunner(verbosity=3).run(suite)
 
