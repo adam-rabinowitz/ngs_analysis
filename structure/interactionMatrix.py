@@ -4,8 +4,8 @@ import os
 import tempfile
 import subprocess
 import gzip
+import cStringIO
 import numpy as np
-import pandas as pd
 
 class genomeBin(object):
 
@@ -41,7 +41,8 @@ class genomeBin(object):
                 start = int(np.floor(remainder/2)) 
                 end = start + maxWidth
                 # Calculate start and stop of remianing bins
-                binEnd = np.arange(end, int(chrLength) + 1, maxWidth)
+                binEnd = np.arange(end, int(chrLength) + 1, maxWidth,
+                    dtype = np.uint32)
                 binStart = (binEnd - maxWidth) + 1
             # Generate bin start and end sites for unequal width bins
             else:
@@ -59,64 +60,69 @@ class genomeBin(object):
                 binWidth = np.array([largeBin] * largeBinNo + 
                     [smallBin] * smallBinNo)
                 # Generate bins
-                binEnd = np.cumsum(binWidth)
+                binEnd = np.cumsum(binWidth, dtype = np.uint32)
                 binStart = (binEnd - binWidth) + 1
             # Generate arrays containing bin index and chromosome name
-            binIndex = np.arange(count, count + len(binStart))
+            binIndex = np.arange(count, count + len(binStart),
+                dtype = np.uint32)
             count += len(binStart)
             binChr = np.array([chrName] *  len(binStart))
-            # Generate output data
-            chrDF = pd.DataFrame({'chr': binChr, 'start':binStart,
-                'end':binEnd, 'index':binIndex})
-            chrDF = chrDF[['chr','start','end','index']]
+            # Store output data
             for bin in np.transpose([binChr, binStart, binEnd]):
                 binNames.append('%s:%s-%s' %(bin[0], bin[1], bin[2]))
-            # Append output data
-            binDict[chrName] = chrDF
+            binDict[chrName] = {'start' : binStart, 'end' : binEnd,
+                'index' : binIndex, 'count' : len(binStart)}
         # Return dataframe
         return(binDict, binNames, count)
-
+    
     def readBed(self):
         # Read in bed file to dataframe
-        df = pd.read_csv(self.binData, sep = '\t', header = None)
-        df = df.iloc[:,0:3]
-        df.columns = ['chr','start','end']
-        # Count bins and add index
-        count = len(df.index)
-        df['index'] = np.arange(0,count)
-        # Extract bin names
+        binChr = np.loadtxt(self.binData, usecols = (0,), dtype = str)
+        binStart = np.loadtxt(self.binData, usecols = (1,), dtype = np.uint32)
+        binEnd = np.loadtxt(self.binData, usecols = (2,), dtype = np.uint32)
+        binIndex = np.arange(0, len(binStart), 1, dtype = np.uint32)
+        if len(binChr) != len(binStart) or len(binStart) != len(binEnd):
+            raise IOError('Invalid bed file supplied')
+        # Create output data variables
+        binDict = collections.OrderedDict()
         binNames = []
-        for bin in np.transpose([df['chr'], df['start'], df['end']]):
-            binNames.append('%s:%s-%s' %(bin[0], bin[1], bin[2]))
-        # Split data frames
-        chrom = np.unique(df['chr'])
-        binDF = collections.OrderedDict()
-        for c in chrom:
-            binDF[c] = df.loc[df['chr'] == c]
-            binDF[c].index = np.arange(0, len(binDF[c].index))
-        # Check that the bins are non-overlapping and ordered
-        for chrDF in binDF.values():
-            binArray = np.empty(2 * len(chrDF.index), dtype=int)
-            binArray[0::2] = chrDF['start']
-            binArray[1::2] = chrDF['end']
+        count = len(binStart)
+        # Create arrays for every chromosome
+        for chrom in np.unique(binChr):
+            # Extract arrays for chromosome
+            indices = binChr == chrom
+            chrChr = binChr[indices]
+            chrStart = binStart[indices]
+            chrEnd = binEnd[indices]
+            chrIndex = binIndex[indices]
+            # Check for overlapping bins
+            binArray = np.empty(2 * sum(indices), dtype = np.uint32)
+            binArray[0::2] = chrStart
+            binArray[1::2] = chrEnd
             for i in xrange(len(binArray) - 1):
                 if binArray[i + 1] <= binArray[i]:
-                    raise IOError('Bed file may contain overlapping bins')
+                    raise IOError('Bed file contains overlapping bins')
+            # Store output data
+            for bin in np.transpose([chrChr, chrStart, chrEnd]):
+                binNames.append('%s:%s-%s' %(bin[0], bin[1], bin[2]))
+            binDict[chrom] = {'start' : chrStart, 'end' : chrEnd,
+                'index' : chrIndex, 'count' : len(chrStart)}
         # Return data
-        return(binDF, binNames, count)
-
+        return(binDict, binNames, count)
+    
     def findBinIndex(self, chrom, position):
+        # Convert position format
+        position = np.uint32(position)
         # Extract bin location
         try:
-            binLocation =  np.searchsorted(
-                self.binDict[chrom]['end'], position)
+            binLocation =  self.binDict[chrom]['end'].searchsorted(position)
         except KeyError:
             return('nochr')
         # Extract bin data
         try:
-            binStart, binIndex = self.binDict[chrom].loc[
-                int(binLocation),['start','index']]
-        except KeyError:
+            binStart = self.binDict[chrom]['start'][binLocation]
+            binIndex = self.binDict[chrom]['index'][binLocation]
+        except IndexError:
             return('nobin')
         # Extract bin name/number
         if binStart <= position:
@@ -125,101 +131,112 @@ class genomeBin(object):
             return('nobin')
     
     def writeBed(self, fileName):
-        outDF = pd.concat(self.binDict.values())
-        np.savetxt(fileName, outDF, '%s', '\t')
-
-def matrixProcess(genomeBin, inputQueue, outPipe):
-    # Create matrix and log array
-    matrix = np.zeros((genomeBin.binCount, genomeBin.binCount),
-        dtype='int32')
-    logData = np.zeros(4, dtype = 'int32')
-    # Extract data from pipe 
-    for fragPair in iter(inputQueue.get, None):
-        # Count total
-        logData[0] += 1
-        # Strip and process line
-        fragPair = fragPair.strip().split('\t')
-        # Extract location of fragends
-        indices = []
-        fragends = [fragPair[0:2], fragPair[3:5]]
-        for fragChr, fragLoc in fragends:
-            index = genomeBin.findBinIndex(fragChr, int(fragLoc))
-            if isinstance(index, int):
-                indices.append(index)
+        with open(fileName, 'w') as outFile:
+            for name in self.binNames:
+                chrom, interval = name.split(':')
+                start, end = interval.split('-')
+                outFile.write('%s\t%s\t%s\n' %(chrom, start, end))
+    
+    def matrixProcess(self, inputQueue, outPipe):
+        # Create matrix and log array
+        matrix = np.zeros((self.binCount, self.binCount),
+            dtype = np.uint32)
+        logData = np.zeros(4, dtype = np.uint32)
+        # Extract data from pipe 
+        for fragPair in iter(inputQueue.get, None):
+            # Count total
+            logData[0] += 1
+            # Strip and process line
+            fragPair = fragPair.strip().split('\t')
+            # Extract location of fragends
+            indices = []
+            fragends = [fragPair[0:2], fragPair[3:5]]
+            for fragChr, fragLoc in fragends:
+                index = self.findBinIndex(fragChr, fragLoc)
+                if isinstance(index, np.uint32):
+                    indices.append(index)
+                else:
+                    indices = index
+                    break
+            # Check that two bin  indexes have been identified
+            if isinstance(indices, list):
+                # Count accepted ligations and data to array
+                logData[3] += 1
+                matrix[indices[0]][indices[1]] += 1
+                matrix[indices[1]][indices[0]] += 1
+            # Count incorrect indices
+            elif indices == 'nochr':
+                logData[1] += 1
+            elif indices == 'nobin':
+                logData[2] += 1
             else:
-                indices = index
-                break
-        # Check that two bin  indexes have been identified
-        if isinstance(indices, list):
-            # Count accepted ligations and data to array
-            logData[3] += 1
-            matrix[indices[0]][indices[1]] += 1
-            matrix[indices[1]][indices[0]] += 1
-        # Count incorrect indices
-        elif indices == 'nochr':
-            logData[1] += 1
-        elif indices == 'nobin':
-            logData[2] += 1
+                raise ValueError('unrecognised bin index')
+        outPipe.send((matrix, logData))
+    
+    def generateMatrix(self, fragendFile, threads=1):
+        # Manage thread number
+        if threads > 2:
+            threads -= 1
+        # Open input file
+        if fragendFile.endswith('.gz'):
+            sp = subprocess.Popen(["zcat", fragendFile],
+                stdout = subprocess.PIPE)
+            fh = cStringIO.StringIO(sp.communicate()[0])
         else:
-            raise ValueError('unrecognised bin index')
-    outPipe.send((matrix, logData))
-
-def generateMatrix(fragendFile, genomeBin, threads=1):
-    # Open input file
-    if fragendFile.endswith('.gz'):
-        inFile = gzip.open(fragendFile)
-    else:
-        inFile = open(fragendFile)
-    # Create queue
-    fragQueue = multiprocessing.Queue()
-    # Start processes to count interactions
-    processData = []
-    for _ in range(threads):
-        # Create pipes and process
-        pipeReceive, pipeSend = multiprocessing.Pipe(False)
-        process = multiprocessing.Process(
-            target = matrixProcess,
-            args = (genomeBin, fragQueue, pipeSend)
-        )
-        process.start()
-        pipeSend.close()
-        # Strore process and pipe data
-        processData.append((process,pipeReceive))
-    # Add input data to queue
-    for line in inFile:
-        fragQueue.put(line)
-    # Add termination values to queue and close
-    for _ in processData:
-        fragQueue.put(None)
-    fragQueue.close()
-    # Extract data from processes and terminate
-    for count, (process, pipe) in enumerate(processData):
-        # Extract data and close process and pipes
-        processMatrix, processLog = pipe.recv()
-        process.join()
-        pipe.close()
-        # Add matrix count data
-        if count:
-            finalMatrix += processMatrix
-            finalLog += processLog
-        else:
-            finalMatrix = processMatrix
-            finalLog = processLog
-    # Return data
-    return(finalMatrix, finalLog)
+            fh = open(fragendFile)
+        # Create queue
+        fragQueue = multiprocessing.Queue()
+        # Start processes to count interactions
+        processData = []
+        for _ in range(threads):
+            # Create pipes and process
+            pipeReceive, pipeSend = multiprocessing.Pipe(False)
+            process = multiprocessing.Process(
+                target = self.matrixProcess,
+                args = (fragQueue, pipeSend)
+            )
+            process.start()
+            pipeSend.close()
+            # Strore process and pipe data
+            processData.append((process,pipeReceive))
+        # Add input data to queue
+        for line in fh:
+            fragQueue.put(line)
+        # Add termination values to queue and close
+        for _ in processData:
+            fragQueue.put(None)
+        fragQueue.close()
+        # Extract data from processes and terminate
+        for count, (process, pipe) in enumerate(processData):
+            # Extract data and close process and pipes
+            processMatrix, processLog = pipe.recv()
+            process.join()
+            pipe.close()
+            # Add matrix count data
+            if count:
+                finalMatrix += processMatrix
+                finalLog += processLog
+            else:
+                finalMatrix = processMatrix
+                finalLog = processLog
+        # Close input file
+        if not fragendFile.endswith('.gz'):
+            fh.close()
+        # Return data
+        return(finalMatrix, finalLog)
 
 def normaliseMatrix(inMatrix, excludeBin):
     ''' Function normalises HiC data using the iterative correction
     algorithm generated by Imakaev et al. The algorithm is incoporated
     into the Hi-Corrector package. Function takes 2 arguments:
-
+    
     1)  inMatrix - either an string listing input matrix file or a numpy
-        array of the raw counts. It is presumed an input matric file will
-        have a header.
+    array of the raw counts. It is presumed an input matric file will
+    have a header.
     2)  excludeBin - either an integer encoding the minimum bin count or a
-        boolean numpy array with a value for each bin. A value of True
-        will lead to a bin being excluded.
-        
+    boolean numpy array with a value for each bin. A value of True
+    will lead to a bin being excluded.
+    
     '''
     # Read input file if supplied
     if isinstance(inMatrix, str):
@@ -247,7 +264,7 @@ def normaliseMatrix(inMatrix, excludeBin):
     np.savetxt(tempMatrix, inMatrix, '%s', '\t')
     # Calculate bias 
     biasCommand = ['/farm/babs/redhat6/software/Hi-Corrector1.1/bin/ic_mes', 
-        tempMatrix, '5000', str(binNo), '1000', '0', '0', biasFile]
+        tempMatrix, '4000', str(binNo), '1000', '0', '0', biasFile]
     biasLog = subprocess.check_output(biasCommand)
     # Extract bias values
     biasFactors = np.loadtxt(
