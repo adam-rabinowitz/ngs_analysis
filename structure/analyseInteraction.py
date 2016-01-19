@@ -87,14 +87,21 @@ class maskMatrix(object):
                 self.binDF.loc[rowNo,['self','inter','up','down','log2']] = (
                     selflig, inter, up, down, log2)
     
-    def upDown(array, index):
-        up = array[index-1::-1]
+    def upDown(self, array, index):
+        ''' Returns distance-paired upstream and downstream arrays.'''
+        if index == 0:
+            up = np.array([])
+        else:
+            up = array[index-1::-1]
         down = array[index+1:]
         return(up, down)
     
-    def unmaskedPair(a1, a2):
-        maxL = min(len(a1), len(a2))
-        masked = np.logical_or(a1.mask[:maxL], a2.mask[:maxL])
+    def unmaskedPair(self, a1, a2, maxl = 10):
+        ''' Returns indices of unmasked array pairs.'''
+        maxl = min(len(a1), len(a2), maxl)
+        if maxl == 0:
+            return(np.nan)
+        masked = np.logical_or(a1.mask[:maxl], a2.mask[:maxl])
         indices = np.where(masked == False)
         return(indices) 
     
@@ -112,6 +119,7 @@ class maskMatrix(object):
             else:
                 # Extract up and down arrays
                 up, down = self.upDown(row, rowNo)
+                print up, down
                 # Extract probabilities
                 selfProb = row[rowNo].sum()
                 upProb = up.sum()
@@ -135,7 +143,7 @@ class maskMatrix(object):
                         log2 = np.log2(upSum/downSum)
                 # Store results
                 self.binDF.loc[rowNo,['self','inter','up','down','log2']] = (
-                    selfprob, interProb, upProb, downProb, log2)
+                    selfProb, interProb, upProb, downProb, log2)
     
     def binDistance(self):
         ''' Extract median interaction distance for bins '''
