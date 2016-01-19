@@ -3,11 +3,10 @@ import collections
 import tempfile
 import os
 import numpy as np
-import pandas as pd
 from ngs_analysis.structure import interactionMatrix
 
 class InteractionTestCase(unittest.TestCase):
-    
+   
     def setUp(self):
         ''' Create data for unittest.'''
         # Create file names
@@ -36,9 +35,9 @@ class InteractionTestCase(unittest.TestCase):
                     'chr1\t20\t+\tchr3\t20\t-',
                     'chr1\t12\t-\tchr2\t26\t-',
                     'chr1\t14\t+\tchr1\t37\t+',
-                    'chr1\t1\t+\tchr3\t10\t+'
+                    'chr1\t1\t+\tchr2\t10\t+'
                 ))
-    
+   
     def tearDown(self):
         ''' Remove temporary files and directories '''
         for file in [self.chrFile, self.inBed1, self.inBed2, self.inFrag]:
@@ -48,126 +47,135 @@ class InteractionTestCase(unittest.TestCase):
 
 class TestBinFormation(InteractionTestCase):
 
-    def test_bin_generation1(self):    
+    def test_bin_generation1(self):
         ''' Test unequal bin creation with small bins '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,10,False))
-        chr1DF = pd.DataFrame()
-        chr1DF['chr'] = np.array(['chr1'] * 5)
-        chr1DF['start'] = np.array([1,11,20,29,38])
-        chr1DF['end'] = np.array([10,19,28,37,46])
-        chr1DF['index'] = np.array([0,1,2,3,4])
-        chr2DF = pd.DataFrame()
-        chr2DF['chr'] = np.array(['chr2'] * 4)
-        chr2DF['start'] = np.array([1,10,18,26])
-        chr2DF['end'] = np.array([9,17,25,33])
-        chr2DF['index'] = np.array([5,6,7,8])
-        self.assertTrue(all(genomeBin.binDict['chr1'] == chr1DF))
-        self.assertTrue(all(genomeBin.binDict['chr2'] == chr2DF))
-    
-    def test_bin_generation2(self):    
+        self.assertTrue(all(genomeBin.binDict['chr1']['start'] ==
+            np.array([1,11,20,29,38], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['end'] ==
+            np.array([10,19,28,37,46], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['index'] ==
+            np.array([0,1,2,3,4], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['start'] ==
+            np.array([1,10,18,26], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['end'] ==
+            np.array([9,17,25,33], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['index'] ==
+            np.array([5,6,7,8], dtype=np.uint32)))
+       
+   
+    def test_bin_generation2(self):
         ''' Test unequal bin creation with small bins '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,11,False))
-        chr1DF = pd.DataFrame()
-        chr1DF['chr'] = np.array(['chr1'] * 5)
-        chr1DF['start'] = np.array([1,11,20,29,38])
-        chr1DF['end'] = np.array([10,19,28,37,46])
-        chr1DF['index'] = np.array([0,1,2,3,4])
-        chr2DF = pd.DataFrame()
-        chr2DF['chr'] = np.array(['chr2'] * 3)
-        chr2DF['start'] = np.array([1,12,23])
-        chr2DF['end'] = np.array([11,22,33])
-        chr2DF['index'] = np.array([5,6,7])
-        self.assertTrue(all(genomeBin.binDict['chr1'] == chr1DF))
-        self.assertTrue(all(genomeBin.binDict['chr2'] == chr2DF))
-    
-    def test_bin_generation3(self):    
+        self.assertTrue(all(genomeBin.binDict['chr1']['start'] ==
+            np.array([1,11,20,29,38], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['end'] ==
+            np.array([10,19,28,37,46], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['index'] ==
+            np.array([0,1,2,3,4], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['start'] ==
+            np.array([1,12,23], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['end'] ==
+            np.array([11,22,33], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['index'] ==
+            np.array([5,6,7], dtype=np.uint32)))
+   
+    def test_bin_generation3(self):
         ''' Test unequal bin creation with large bins '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,40,False))
-        chr1DF = pd.DataFrame()
-        chr1DF['chr'] = np.array(['chr1'] * 2)
-        chr1DF['start'] = np.array([1,24])
-        chr1DF['end'] = np.array([23,46])
-        chr1DF['index'] = np.array([0,1])
-        chr2DF = pd.DataFrame()
-        chr2DF['chr'] = np.array(['chr2'])
-        chr2DF['start'] = np.array([1])
-        chr2DF['end'] = np.array([33])
-        chr2DF['index'] = np.array([2])
-        self.assertTrue(all(genomeBin.binDict['chr1'] == chr1DF))
-        self.assertTrue(all(genomeBin.binDict['chr2'] == chr2DF))
-    
-    def test_bin_generation4(self):    
+        self.assertTrue(all(genomeBin.binDict['chr1']['start'] ==
+            np.array([1,24], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['end'] ==
+            np.array([23,46], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['index'] ==
+            np.array([0,1], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['start'] ==
+            np.array([1], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['end'] ==
+            np.array([33], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['index'] ==
+            np.array([2], dtype=np.uint32)))
+   
+    def test_bin_generation4(self):
         ''' Test equal bin creation with small bins '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,10,True))
-        chr1DF = pd.DataFrame()
-        chr1DF['chr'] = np.array(['chr1'] * 4)
-        chr1DF['start'] = np.array([4,14,24,34])
-        chr1DF['end'] = np.array([13,23,33,43])
-        chr1DF['index'] = np.array([0,1,2,3])
-        chr2DF = pd.DataFrame()
-        chr2DF['chr'] = np.array(['chr2'] * 3)
-        chr2DF['start'] = np.array([2,12,22])
-        chr2DF['end'] = np.array([11,21,31])
-        chr2DF['index'] = np.array([4,5,6])
-        self.assertTrue(all(genomeBin.binDict['chr1'] == chr1DF))
-        self.assertTrue(all(genomeBin.binDict['chr2'] == chr2DF))
-    
-    def test_bin_generation5(self):    
+        self.assertTrue(all(genomeBin.binDict['chr1']['start'] ==
+            np.array([4,14,24,34], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['end'] ==
+            np.array([13,23,33,43], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['index'] ==
+            np.array([0,1,2,3], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['start'] ==
+            np.array([2,12,22], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['end'] ==
+            np.array([11,21,31], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['index'] ==
+            np.array([4,5,6], dtype=np.uint32)))
+   
+    def test_bin_generation5(self):
         ''' Test equal bin creation with small bins '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,11,True))
-        chr1DF = pd.DataFrame()
-        chr1DF['chr'] = np.array(['chr1'] * 4)
-        chr1DF['start'] = np.array([2,13,24,35])
-        chr1DF['end'] = np.array([12,23,34,45])
-        chr1DF['index'] = np.array([0,1,2,3])
-        chr2DF = pd.DataFrame()
-        chr2DF['chr'] = np.array(['chr2'] * 3)
-        chr2DF['start'] = np.array([1,12,23])
-        chr2DF['end'] = np.array([11,22,33])
-        chr2DF['index'] = np.array([4,5,6])
-        self.assertTrue(all(genomeBin.binDict['chr1'] == chr1DF))
-        self.assertTrue(all(genomeBin.binDict['chr2'] == chr2DF))
-    
-    def test_bin_generation6(self):    
+        self.assertTrue(all(genomeBin.binDict['chr1']['start'] ==
+            np.array([2,13,24,35], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['end'] ==
+            np.array([12,23,34,45], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['index'] ==
+            np.array([0,1,2,3], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['start'] ==
+            np.array([1,12,23], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['end'] ==
+            np.array([11,22,33], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['index'] ==
+            np.array([4,5,6], dtype=np.uint32)))
+   
+    def test_bin_generation6(self):
         ''' Test unequal bin creation with small bins '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,41,True))
-        chr1DF = pd.DataFrame()
-        chr1DF['chr'] = np.array(['chr1'])
-        chr1DF['start'] = np.array([3])
-        chr1DF['end'] = np.array([43])
-        chr1DF['index'] = np.array([0])
-        chr2DF = pd.DataFrame(columns = ['chr','start','end','index'])
-        self.assertTrue(all(genomeBin.binDict['chr1'] == chr1DF))
-        self.assertTrue(all(genomeBin.binDict['chr2'] == chr2DF))
-    
-    def test_bin_generation6(self):    
+        self.assertTrue(all(genomeBin.binDict['chr1']['start'] ==
+            np.array([2,13,24,35], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['end'] ==
+            np.array([12,23,34,45], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['index'] ==
+            np.array([0,1,2,3], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['start'] ==
+            np.array([1,12,23], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['end'] ==
+            np.array([11,22,33], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['index'] ==
+            np.array([4,5,6], dtype=np.uint32)))
+     
+    def test_bin_generation6(self):   
         ''' Test unequal bin creation with small bins '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,41,True))
-        chr1DF = pd.DataFrame()
-        chr1DF['chr'] = np.array(['chr1'])
-        chr1DF['start'] = np.array([3])
-        chr1DF['end'] = np.array([43])
-        chr1DF['index'] = np.array([0])
-        chr2DF = pd.DataFrame(columns = ['chr','start','end','index'])
-        self.assertTrue(all(genomeBin.binDict['chr1'] == chr1DF))
-        self.assertTrue(all(genomeBin.binDict['chr2'] == chr2DF))
-
-    def test_bin_generation7(self):    
+        self.assertTrue(all(genomeBin.binDict['chr1']['start'] ==
+            np.array([3], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['end'] ==
+            np.array([43], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['index'] ==
+            np.array([0], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['start'] ==
+            np.array([], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['end'] ==
+            np.array([], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['index'] ==
+            np.array([], dtype=np.uint32)))
+    
+    def test_bin_generation7(self):   
         ''' Test bin creation from bed file '''
         genomeBin = interactionMatrix.genomeBin(self.inBed1)
-        chr1DF = pd.DataFrame() 
-        chr1DF['chr'] = np.array(['chr1'] * 2)
-        chr1DF['start'] = np.array([10,30])
-        chr1DF['end'] = np.array([20,40])
-        chr1DF['index'] = np.array([0,1])
-        chr2DF = pd.DataFrame()
-        chr2DF['chr'] = np.array(['chr2'])
-        chr2DF['start'] = np.array([5])
-        chr2DF['end'] = np.array([15])
-        chr2DF['index'] = np.array([2])
-        self.assertTrue(all(genomeBin.binDict['chr1'] == chr1DF))
-        self.assertTrue(all(genomeBin.binDict['chr2'] == chr2DF))
-
+        self.assertTrue(all(genomeBin.binDict['chr1']['start'] ==
+            np.array([10,30], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['end'] ==
+            np.array([20,40], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr1']['index'] ==
+            np.array([0,1], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['start'] ==
+            np.array([5], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['end'] ==
+            np.array([15], dtype=np.uint32)))
+        self.assertTrue(all(genomeBin.binDict['chr2']['index'] ==
+            np.array([2], dtype=np.uint32)))
+    
     def test_bin_generation8(self):
         ''' Test overlapping bins in bed file '''
         with self.assertRaises(IOError):
@@ -187,9 +195,9 @@ class TestIndexFinder(InteractionTestCase):
         self.assertEqual(genomeBin.findBinIndex('chr1',40), 1)
         self.assertEqual(genomeBin.findBinIndex('chr1',41), 'nobin')
         self.assertEqual(genomeBin.findBinIndex('chr3',10), 'nochr')
-    
+   
     def test_index_finder2(self):
-        ''' Test finding contiguos bins '''
+        ''' Test finding contiguous unequal bins '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,10,False))
         self.assertEqual(genomeBin.findBinIndex('chr2',0), 'nobin')
         self.assertEqual(genomeBin.findBinIndex('chr2',1), 5)
@@ -199,14 +207,21 @@ class TestIndexFinder(InteractionTestCase):
         self.assertEqual(genomeBin.findBinIndex('chr2',26), 8)
         self.assertEqual(genomeBin.findBinIndex('chr2',33), 8)
         self.assertEqual(genomeBin.findBinIndex('chr2',34), 'nobin')
+   
+    def test_index_finder3(self):
+        ''' Test finding contiguous equal bins '''
+        genomeBin = interactionMatrix.genomeBin((self.chrFile,10,True))
+        self.assertEqual(genomeBin.findBinIndex('chr1',1), 'nobin')
+        self.assertEqual(genomeBin.findBinIndex('chr2',32), 'nobin')
+        self.assertEqual(genomeBin.findBinIndex('chr2',31), 6)
 
 class TestMatrixGeneration(InteractionTestCase):
-    
+   
     def test_matrix_generation(self):
         ''' Test creation of matrix '''
         genomeBin = interactionMatrix.genomeBin((self.chrFile,10,True))
-        countMatrix, logArray = interactionMatrix.generateMatrix(
-            self.inFrag, genomeBin, threads=4)
+        countMatrix, logArray = genomeBin.generateMatrix(
+            self.inFrag, threads=4)
         self.assertTrue(np.array_equal(countMatrix,
             np.array([
                 [2,0,0,0,0,0,1],
