@@ -45,67 +45,25 @@ class maskMatrix(object):
         distMatrix = np.abs(centreArray - centreArray[:,None])
         self.distMatrix = ma.masked_array(distMatrix, mask = maskMatrix)
     
-    def binDirectionOld(self):
-        ''' Extract interaction direction data for bins '''
-        # Create dataframe to store data
-        df = pd.DataFrame(columns = ['self', 'inter', 'up', 'down', 'log2'])
-        self.binDF = pd.concat([self.binDF, df], axis=1)
-        # Loop through rows of the matrix
-        for rowNo, row in enumerate(self.probMatrix):
-            # Set none values if bin is entirely masked
-            if ma.count(row) == 0:
-                continue
-            # Else calculate values
-            else:
-                # Extract self frequency
-                selflig = row[rowNo]
-                # Extract up frequency
-                up = row[:rowNo]
-                if ma.count(up) == 0:
-                    up = 0.
-                else:
-                    up = up.sum()
-                # Extract down frequency
-                down = row[rowNo + 1:]
-                if ma.count(down) == 0:
-                    down = 0.
-                else:
-                    down = down.sum()
-                # Calculate inter value
-                inter = sum(row.data) - selflig - up - down
-                # Calculate log2 value
-                if up == 0:
-                    if down == 0:
-                        log2 = np.nan
-                    else:
-                        log2 = -np.inf
-                elif down == 0:
-                    log2 = np.inf
-                else:
-                    log2 = np.log2(up/down)
-                # Store results
-                self.binDF.loc[rowNo,['self','inter','up','down','log2']] = (
-                    selflig, inter, up, down, log2)
-    
     def upDown(self, array, index):
         ''' Returns distance-paired upstream and downstream arrays.'''
         if index == 0:
-            up = np.array([])
+            up = ma.masked_array([], mask=np.array([],dtype=bool))
         else:
             up = array[index-1::-1]
         down = array[index+1:]
         return(up, down)
     
-    def unmaskedPair(self, a1, a2, maxl = 10):
+    def unmaskedPair(self, a1, a2, maxl):
         ''' Returns indices of unmasked array pairs.'''
         maxl = min(len(a1), len(a2), maxl)
         if maxl == 0:
-            return(np.nan)
+            return(np.array([]))
         masked = np.logical_or(a1.mask[:maxl], a2.mask[:maxl])
-        indices = np.where(masked == False)
+        indices = np.where(masked == False)[0]
         return(indices) 
     
-    def binDirection(self):
+    def binDirection(self, maxl = 10):
         ''' Extract interaction direction data for bins '''
         # Create dataframe to store data
         df = pd.DataFrame(columns = ['self', 'inter', 'up', 'down', 'log2'])
@@ -119,15 +77,20 @@ class maskMatrix(object):
             else:
                 # Extract up and down arrays
                 up, down = self.upDown(row, rowNo)
-                print up, down
                 # Extract probabilities
                 selfProb = row[rowNo].sum()
-                upProb = up.sum()
-                downProb = down.sum()
+                if up.count() == 0:
+                    upProb = 0
+                else:
+                    upProb = up.sum()
+                if down.count() == 0:
+                    downProb = 0
+                else:
+                    downProb = down.sum()
                 interProb = 1 - upProb - downProb - selfProb
                 # Extract paired bins for log2 calculations
-                indices = self.unmaskedPair(up, down)
-                if indices:
+                indices = self.unmaskedPair(up, down, maxl)
+                if len(indices) > 0:
                     # Calculate sum of paired up and down bins
                     upSum = up[indices].sum()
                     downSum = down[indices].sum()
@@ -141,6 +104,8 @@ class maskMatrix(object):
                         log2 = np.inf
                     else:
                         log2 = np.log2(upSum/downSum)
+                else:
+                    log2 = np.nan
                 # Store results
                 self.binDF.loc[rowNo,['self','inter','up','down','log2']] = (
                     selfProb, interProb, upProb, downProb, log2)
@@ -161,7 +126,7 @@ class maskMatrix(object):
                 dist = ma.average(row, weights = self.probMatrix[rowNo])
                 self.binDF.loc[rowNo,'dist'] = np.uint32(dist)
     
-    def combinedDistance(self, fraction = 2/3.0):
+    def combinedDistance(self):
         ''' Extract lowess smooth interaction frequency for dataset '''
         # Extract probabilities
         prob = self.probMatrix[~self.probMatrix.mask]
