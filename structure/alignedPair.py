@@ -3,7 +3,7 @@ import pysam
 import collections
 import gzip
 import multiprocessing
-from ngs_analysis.system import iohandle
+from ngs_python.system import iohandle
 from general_functions import writeFile
 
 def concordant(reads, maxSize):

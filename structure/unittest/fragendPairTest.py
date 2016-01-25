@@ -5,7 +5,7 @@ import tempfile
 import numpy
 import collections
 # Import personal modules
-from ngs_analysis.structure import fragendPair
+from ngs_python.structure import fragendPair
 
 class FragendTestCase(unittest.TestCase):
     

@@ -3,7 +3,7 @@ import unittest
 import tempfile
 import numpy as np
 import pandas as pd
-from ngs_analysis.structure import analyseInteraction
+from ngs_python.structure import analyseInteraction
 
 
 class InteractionTestCase(unittest.TestCase):

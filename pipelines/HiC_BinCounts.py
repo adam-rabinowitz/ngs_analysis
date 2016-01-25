@@ -23,7 +23,7 @@ Options:
 import os
 import re
 import numpy as np
-from ngs_analysis.structure import interactionMatrix, analyseInteraction
+from ngs_python.structure import interactionMatrix, analyseInteraction
 from general_functions import docopt
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')

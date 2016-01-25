@@ -3,7 +3,7 @@ import tempfile
 import collections
 import os
 import multiprocessing
-from ngs_analysis.structure import alignedPair
+from ngs_python.structure import alignedPair
 
 class PairTestCase(unittest.TestCase):
     

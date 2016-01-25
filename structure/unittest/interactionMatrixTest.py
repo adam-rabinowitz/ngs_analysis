@@ -3,7 +3,7 @@ import collections
 import tempfile
 import os
 import numpy as np
-from ngs_analysis.structure import interactionMatrix
+from ngs_python.structure import interactionMatrix
 
 class InteractionTestCase(unittest.TestCase):
    

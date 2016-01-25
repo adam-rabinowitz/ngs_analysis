@@ -9,9 +9,9 @@ import argparse
 import itertools
 import os
 # Import custom modules
-from ngs_analysis.fastq import fastqFind, fastqMerge, fastqAlign
-from ngs_analysis.bam import samtools
-from ngs_analysis.structure import alignedPair, fragendPair
+from ngs_python.fastq import fastqFind, fastqMerge, fastqAlign
+from ngs_python.bam import samtools
+from ngs_python.structure import alignedPair, fragendPair
 # Create parser
 parser = argparse.ArgumentParser()
 # Define positional arguments

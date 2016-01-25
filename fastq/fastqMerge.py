@@ -3,7 +3,7 @@ import multiprocessing
 import gzip
 import re
 import itertools
-from ngs_analysis.fastq import fastqExtract
+from ngs_python.fastq import fastqExtract
 from general_functions import writeFile
 
 def mergeLabelPair(fastqIn1, fastqIn2, fastqOut, label1=':1', label2=':2'):

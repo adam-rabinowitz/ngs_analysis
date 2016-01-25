@@ -1,7 +1,7 @@
 # Import required modules
 from argparse import ArgumentParser
 import numpy as np
-from ngs_analysis.structure import interactionMatrix 
+from ngs_python.structure import interactionMatrix 
 # Create argument parser
 parser = ArgumentParser()
 # List required arguments
