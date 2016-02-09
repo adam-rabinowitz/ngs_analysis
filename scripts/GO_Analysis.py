@@ -30,12 +30,6 @@ args['--mingo'] = int(args['--mingo'])
 args['--maxgo'] = int(args['--maxgo'])
 args['--mingene'] = int(args['--mingene'])
 args['--padj'] = float(args['--padj'])
-print args
-#goFile = '/farm/scratch/rs-bio-lif/rabino01/bonet/genomeData/GRCh38.p3.GO.txt.gz'
-#deFile = '/farm/scratch/rs-bio-lif/rabino01/bonet/triplicateData/rsemData/differential_results_1.txt'
-#diffExprFDR = 0.05
-#minGenesGO = 5
-#outFile = '/farm/scratch/rs-bio-lif/rabino01/bonet/triplicateData/rsemData/go_analysis.txt'
 # Create variables to store gene and GO data
 goAnnotation = {}
 genes2GO = collections.defaultdict(set)
@@ -81,10 +75,8 @@ with open(args['<diffile>'], 'r') as ifile:
             geneSet.add(gene)
             # Store gene names associated with GO terms
             if padj <= args['--padj']:
-                print gene, padj
                 # Add gene to list of significant genes
                 sigGeneSet.add(gene)
-                print len(sigGeneSet)
                 for GO in goList:
                     sigGenesGO[GO].add(gene)
                     allGenesGO[GO].add(gene)
