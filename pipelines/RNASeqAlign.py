@@ -34,7 +34,7 @@ import os
 # Import custom modules
 from ngs_python.fastq import fastqTrim, fastqQC, fastqAlign, fastqExtract, fastqFind
 from ngs_python.bam import samtools, picard, bamQC
-from ngs_python.system import moab
+from general_python import moab
 import alignment_functions
 # Print command
 print '%s\n' %(' '.join(sys.argv))
