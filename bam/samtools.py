@@ -133,7 +133,7 @@ def sort(inFile, outFile, name = False, threads = 1,
     # Index output if possible
     if not name and outFormat == 'bam':
         outputCommand += ' && %s' %(
-            samtools_index(
+            index(
                 inBam = outFile,
                 path = path
             )
