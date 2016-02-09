@@ -90,7 +90,7 @@ def bwaMemAlign(index, outSam, read1, read2 = '', path = 'bwa',
             suffixes = ['.amb', '.ann', '.bwt', '.pac', '.sa']
             for s in suffixes:
                 if not os.path.isfile(index + s):
-                    raise IOError('Index file %s no found' %(index + s))
+                    raise IOError('Genome index file %s no found' %(index + s))
     else:
         raise ValueError("'check' argument must be boolean") 
     # Process secondary command
@@ -118,6 +118,7 @@ def bwaMemAlign(index, outSam, read1, read2 = '', path = 'bwa',
         # Add string to command
         bwaCommand.insert(2,rgString)
         bwaCommand.insert(2,'-R')
+    print bwaCommand
     # Complete and return bwa command
     completeCommand = '%s > %s' %(
         ' '.join(bwaCommand),
