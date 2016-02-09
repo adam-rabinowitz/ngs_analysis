@@ -127,5 +127,5 @@ if sum(failedBins) < genomeBins.binCount:
         maskMatrix.binDistance()
         maskMatrix.binDF.to_csv(prefix + '.binData', '\t', '')
         # Extract global data
-        distance = maskMatrix.combinedDistance(0.1)
+        distance = maskMatrix.combinedDistance()
         np.savetxt(prefix + '.dist.gz', distance, '%s', '\t')
