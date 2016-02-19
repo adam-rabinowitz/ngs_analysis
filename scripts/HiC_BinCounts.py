@@ -24,7 +24,7 @@ import os
 import re
 import numpy as np
 from ngs_python.structure import interactionMatrix, analyseInteraction
-from general_functions import docopt
+from general_python import docopt
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')
 # Check numerical arguments
