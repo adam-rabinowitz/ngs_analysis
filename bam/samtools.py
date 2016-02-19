@@ -66,7 +66,7 @@ def index(inBam, path = 'samtools'):
     return(indexCommand)
 
 def sort(inFile, outFile, name = False, threads = 1,
-    memory = '2', delete = True, path = 'samtools'):
+    memory = 2, delete = True, path = 'samtools'):
     ''' Function to sort SAM/BAM files using samtools. Function built for
     samtoools version 1.2. If the output file is a BAM and is not sorted by
     name then the file will also be indexed. Function takes 8 arguments:
@@ -77,7 +77,7 @@ def sort(inFile, outFile, name = False, threads = 1,
         indicate file type.
     3)  name - Boolean indicating whether to sort by name.
     4)  threads - Number of threads to use in sort.
-    5)  memory - Memory to use in each thread.
+    5)  memory - Memory, in gigabytes, to use in each thread.
     6)  delete- Boolean indicating whether to delete input and intermediate
         files.
     7)  path - Path to samtools executable.
@@ -113,6 +113,8 @@ def sort(inFile, outFile, name = False, threads = 1,
         nameSort = '-n'
     else:
         nameSort = ''
+    # Process memory argument
+    memory = str(memory) + 'G'
     # Generate sort command
     sortCommand = [path, 'sort', nameSort, '-m', memory, '-@', str(threads),
         '-o', outFile, '-T', outFile[:-4], '-O', outFormat , inFile]
