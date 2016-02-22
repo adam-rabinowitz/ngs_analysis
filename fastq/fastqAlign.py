@@ -1,8 +1,12 @@
 import os
 import sys
+from ngs_python.bam import samtools
 
-def bowtie2Align(index, outSam, read1, read2 = '', path = 'bowtie2',
-    threads = 1, discordant = False, mixed = False, upto = None, check = True):
+def bowtie2Align(
+        index, outSam, read1, read2 = '', path = 'bowtie2',
+        threads = 1, discordant = False, mixed = False, upto = None,
+        check = True
+    ):
     ''' Function to generate command to peform Bowtie2 Alignment of
     paired FASTQ files. Function takes 9 arguments:
     
@@ -65,28 +69,37 @@ def bowtie2Align(index, outSam, read1, read2 = '', path = 'bowtie2',
     bowtie2Command = ' '.join(bowtie2Command)
     return(bowtie2Command)
 
-def bwaMemAlign(index, outSam, read1, read2 = '', path = 'bwa',
-    threads = 1, sampleName = None, libraryID = None, readGroup = None,
-    markSecondary = True, check = True):
+def bwaMemAlign(
+        index, outFile, read1, read2 = '', bwaPath = 'bwa', threads = 1,
+        sampleName = None, libraryID = None, readGroup = 1,
+        markSecondary = True, checkIndex = True, samtoolsPath = 'samtools',
+        memory = '2', nameSort = False
+    ):
     ''' Function to generate command to perform BWA mem alignment of single
-    end or paired end FASTQ files. Function takes the following 10 arguments:
-
+    end or paired end FASTQ files. If the supplied output file name ends with
+    '.bam' then a sorted BAM file will be generated else if the file names
+    ends with '.sam' a sam file is returned. Function takes the following 14
+    arguments:
+    
     1)  index - Path and prefix of BWA index.
-    2)  outSam - Full name of output SAM file.
+    2)  outFile - Full name of output file. Must end '.sam' or '.bam'.
     3)  read1 - Read1 FASTQ file.
     4)  read2 - Read2 FASTQ file.
-    5)  path - Full path to BWA exectuable.
-    6)  threads - Number of threads to use in alignment
+    5)  bwaPath - Full path to BWA exectuable.
+    6)  threads - Number of threads to use.
     7)  sampleName - Name of sample to be used in header.
     8)  libraryID - Name of sample to be used in header.
     9)  readGroup - Name of read group to use in header and alignments.
     10) markSecondary - Boolean, whether to mark secondary alignments.
-    11) check - Boolean, whether to check for correct index extensions.
+    11) checkIndex - Boolean, whether to check for index extensions.
+    12) samtoolsPath - Full path to samtools executable.
+    13) memory - Memory, in G, to use in generating BAM file.
+    14) nameSort - Boolean, whether to generate a name sorted BAM file.
     
     '''
     # Check index extensions if requested
-    if isinstance(check, bool):
-        if check:
+    if isinstance(checkIndex, bool):
+        if checkIndex:
             suffixes = ['.amb', '.ann', '.bwt', '.pac', '.sa']
             for s in suffixes:
                 if not os.path.isfile(index + s):
@@ -101,34 +114,50 @@ def bwaMemAlign(index, outSam, read1, read2 = '', path = 'bwa',
             markSecondary = ''
     else:
         raise ValueError("'markSecondary' argument must be boolean")
+    # Check outut file name and generate intermediate file names
+    if outFile.endswith('.sam'):
+        outSam = outFile
+        outBam = ''
+    elif outFile.endswith('.bam'):
+        outBam = outFile
+        outSam = outFile[:-4] + '.sam'
+    else:
+        raise ValueError("'ouFile' argument must end '.sam' or '.bam'")
     # Create command
-    bwaCommand = [path, 'mem', markSecondary ,'-t', str(threads),
+    bwaCommand = [bwaPath, 'mem', markSecondary ,'-t', str(threads),
         index, read1, read2]
     # Remove missing elements from coomand
-    bwaCommand = filter(None,bwaCommand)
+    bwaCommand = filter(None, bwaCommand)
     # Add read group data
     if readGroup:
         # Create read group string
         rgString = "'@RG"
         if sampleName:
-            rgString = '\\tSM:' + sampleName
+            rgString += '\\tSM:' + sampleName
         if libraryID:
             rgString += '\\tLB:' + libraryID
-        rgString += '\\tID:' + readGroup + "'"
+        rgString += '\\tID:' + str(readGroup) + "'"
         # Add string to command
         bwaCommand.insert(2,rgString)
         bwaCommand.insert(2,'-R')
-    print bwaCommand
-    # Complete and return bwa command
-    completeCommand = '%s > %s' %(
-        ' '.join(bwaCommand),
-        outSam
-    )
+    # Complete BWA command
+    bwaCommand = '%s > %s' %(' '.join(bwaCommand), outSam)
+    # Supplement BWA command with sort command
+    if outBam:
+        sortCommand = samtools.sort(inFile = outSam, outFile = outBam,
+            name = nameSort, memory = memory, delete = True,
+            path = samtoolsPath, threads = threads)
+        completeCommand = bwaCommand + ' && ' + sortCommand
+    else:
+        completeCommand = bwaCommand
+    # Return complete command
     return(completeCommand)
 
-def rsemBowtie2Align(index, outPrefix, read1, read2 = '',
-    rsemPath = 'rsem-calculate-expression', bowtie2Path = '', threads = 1,
-    forProb = 0.5, genomeBam = True, estimateRspd = True, check = True):
+def rsemBowtie2Align(
+        index, outPrefix, read1, read2 = '',
+        rsemPath = 'rsem-calculate-expression', bowtie2Path = '', threads = 1,
+        forProb = 0.5, genomeBam = True, estimateRspd = True, check = True
+    ):
     ''' Function generates and returns a command to align paired FASTQ
     files to a Bowtie2 indexed RSEM refrence transcriptome. Command
     takes 10 arguments:
@@ -199,10 +228,12 @@ def rsemBowtie2Align(index, outPrefix, read1, read2 = '',
     rsemCommand = ' '.join(rsemCommand)
     return(rsemCommand)
 
-def tophat2Align(genomeIndex, transcriptIndex, outDir, read1, read2 = '',
-    path = 'tophat', forProb = 0.5, mateDist = 20, mateSD = 50, threads = 1,
-    sampleName = '', libraryID = '', readGroup = '', discordant = True,
-    mixed = True, check = True):
+def tophat2Align(
+        genomeIndex, transcriptIndex, outDir, read1, read2 = '',
+        path = 'tophat', forProb = 0.5, mateDist = 20, mateSD = 50,
+        threads = 1, sampleName = '', libraryID = '', readGroup = '',
+        discordant = True, mixed = True, check = True
+    ):
     ''' Function to generate and return a command to run a tophat2
     alignment of paired-end RNA seq data. Function designed with
     version 2.0.14 of Tophat2. Function takes 16 arguments:
