@@ -2,7 +2,7 @@
 import re
 import os
 
-def findFastq(prefix, dirList, pair = True):
+def findFastq(prefix, dirList, pair = True, gzip = True):
     ''' A function to identify R1 and R2 FASTQ files from directories
     using a supplied filename prefix. Function returns two list
     containing the read1 and read2 files respectively. Function has
@@ -12,11 +12,11 @@ def findFastq(prefix, dirList, pair = True):
     2)  dirList - A list of directories to search.
     3)  pair - A boolean indicating whether to return only paired reads. Paired
         reads must be in the same directory to be identified. Default = True.
-
+    
     The output is a list of list where the first list is the identified
     read1 files and the second list is a list of the identified read2
     file
-
+    
     '''
     # Check pair argument
     if not isinstance(pair, bool):
@@ -25,38 +25,63 @@ def findFastq(prefix, dirList, pair = True):
     read1 = []
     read2 = []
     # Create regular expression to find files
-    read1Pattern = re.compile(
-        prefix+'.*?(R1){0,1}(_\\d{3}){0,1}\\.fastq(\\.gz){0,1}$'
-    )
-    # Loop through dirList to find files
+    if pair and gzip:
+        read1Pattern = re.compile(
+            prefix+'.*?R1\\.fastq\\.gz$'
+        )
+    elif pair:
+        read1Pattern = re.compile(
+            prefix+'.*?R1\\.fastq(\\.gz){0,1}$'
+        )
+    elif gzip:
+        read1Pattern = re.compile(
+            prefix+'.*?(R1){0,1}\\.fastq\\.gz$'
+        )
+    else:
+        read1Pattern = re.compile(
+            prefix+'.*?(R1){0,1}\\.fastq(\\.gz){0,1}$'
+        ) 
+    # Loop through directories to find fastq files
     for directory in dirList:
         # Extract file names
-        fileList = os.listdir(directory)
-        fileList.sort()
-        # Find paired reads
-        if pair:
-            # Loop through files
-            for f in fileList:
+        for (dirpath, dirnames, filenames) in os.walk(directory):
+            # Loop through filenames
+            for f in filenames:
                 # Find files matching read1 regular expression
                 if re.match(read1Pattern, f):
-                    # Generate name of paired read file
-                    read2File = re.sub(
-                        'R1(?=(_\\d{3}){0,1}\\.fastq(\\.gz){0,1}$)',
-                        'R2',
-                        f
-                    )
-                    # Check for existence of paired read file
-                    if read2File in fileList:
-                        read1.append(directory + f)
-                        read2.append(directory + read2File)
-        # Or find potentially unpaired reads
-        else:
-            # Loop through files
-            for f in fileList:
-                if re.match(read1Pattern, f):
-                    read1.append(directory + f)
+                    # Process pairs
+                    if pair:
+                        # Generate name of paired read file
+                        read2File, nsub = re.subn(
+                            'R1(?=(_\\d{3}){0,1}\\.fastq(\\.gz){0,1}$)',
+                            'R2',
+                            f
+                        )
+                        # Raise error if read2 filename not generated
+                        if nsub != 1:
+                            raise IOError('Could not generate read2 filename'\
+                                ' for %s' %(f))
+                        # Check for existence of paired read file
+                        if read2File in filenames:
+                            read1Path = os.path.join(dirpath, f)
+                            read1.append(read1Path)
+                            read2Path = os.path.join(dirpath, read2File)
+                            read2.append(read2Path)
+                        else:
+                            raise IOError('Could not find read2 filename for '\
+                                ' %s' %(f))
+                    # Store singletons
+                    else:
+                        read1Path = os.path.join(dirpath, f)
+                        read1.append(read1Path)
     # Return data
-    return(read1,read2)
+    if pair:
+        return(read1,read2)
+    else:
+        return(read1)
+
+files = findFastq('NGS-6406', ['/seqstorage/storage/'])
+print files
 
 def findIlluminaFastq(prefix, dirList, pair = True):
     ''' A function to identify R1 and R2 FASTQ files from directories
