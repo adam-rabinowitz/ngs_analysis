@@ -80,9 +80,6 @@ def findFastq(prefix, dirList, pair = True, gzip = True):
     else:
         return(read1)
 
-files = findFastq('NGS-6406', ['/seqstorage/storage/'])
-print files
-
 def findIlluminaFastq(prefix, dirList, pair = True):
     ''' A function to identify R1 and R2 FASTQ files from directories
     using a supplied filename prefix. Function returns two list
