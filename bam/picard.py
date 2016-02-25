@@ -1,4 +1,6 @@
-def index(inBam, picardPath, javaPath = 'java'):
+def index(
+        inBam, picardPath, javaPath = 'java'
+    ):
     ''' Function to index BAM files using the Picard toolkit. Function
     takes three arguments:
     
@@ -16,8 +18,10 @@ def index(inBam, picardPath, javaPath = 'java'):
     )
     return(indexCommand)
 
-def markDuplicates(inBam, outBam, logFile, picardPath, javaPath = 'java',
-    removeDuplicates = False, delete = True):
+def markDuplicates(
+        inBam, outBam, logFile, picardPath, javaPath = 'java',
+        removeDuplicates = False, delete = True
+    ):
     ''' Function to mark duplicates using the picard toolkit.The BAM
     output file is also indexed. Function built for picard-tools version
     1.140 and takes 7 arguments:
@@ -45,15 +49,6 @@ def markDuplicates(inBam, outBam, logFile, picardPath, javaPath = 'java',
     duplicateCommand = ' '.join(duplicateCommand)
     # delete input if requested
     if delete:
-        duplicateCommand += ' && rm %s' %(
-            inBam
-        )
-    # Index duplicates output
-    duplicateCommand += ' && %s' %(
-        index(
-            inBam = outBam,
-            picardPath = picardPath,
-            javaPath = javaPath
-        )
-    )
+        duplicateCommand += ' && rm %s.ba?*' %(inBam[:-4])
+    # Return command
     return(duplicateCommand)
