@@ -71,7 +71,7 @@ def bowtie2Align(
 
 def bwaMemAlign(
         index, outFile, read1, read2 = '', bwaPath = 'bwa', threads = 1,
-        sampleName = None, libraryID = None, readGroup = 1,
+        readGroup = 1, sampleName = None, libraryID = None, platform = None,
         markSecondary = True, checkIndex = True, samtoolsPath = 'samtools',
         memory = '2', nameSort = False
     ):
@@ -131,12 +131,14 @@ def bwaMemAlign(
     # Add read group data
     if readGroup:
         # Create read group string
-        rgString = "'@RG"
+        rgString = "'@RG\\tID:" + str(readGroup)
         if sampleName:
-            rgString += '\\tSM:' + sampleName
+            rgString += '\\tSM:' + str(sampleName)
         if libraryID:
-            rgString += '\\tLB:' + libraryID
-        rgString += '\\tID:' + str(readGroup) + "'"
+            rgString += '\\tLB:' + str(libraryID)
+        if platform:
+            rgString += '\\tPL:' + str(platform)
+        rgString += "'"
         # Add string to command
         bwaCommand.insert(2,rgString)
         bwaCommand.insert(2,'-R')
