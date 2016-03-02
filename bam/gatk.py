@@ -1,4 +1,4 @@
-def gatkRealignTargetCreator(
+def realignTargetCreator(
         inBam, inVcf, reference, outputList, javaPath = 'java',
         gatkPath = 'GenomeAnalysisTK.jar', threads = 1
     ):
@@ -22,7 +22,7 @@ def gatkRealignTargetCreator(
     targetCommand = ' '.join(targetCommand)
     return(targetCommand)
 
-def gatkRealignFromTarget(
+def realignFromTarget(
         inBam, inVcf, reference, inputList, outBam, javaPath = 'java',
         gatkPath = 'GenomeAnalysisTK.jar'
     ):
@@ -73,13 +73,13 @@ def gatkRealign(
         delList = True
         listFile = inBam[:-4] + '_target.list'
     # Create command to generate target files
-    targetCommand = gatkRealignTargetCreator(
+    targetCommand = realignTargetCreator(
         inBam = inBam, inVcf = inVcf, reference = reference,
         outputList = listFile, javaPath = javaPath, gatkPath = gatkPath,
         threads = threads
     )
     # Create command to perform realignment
-    realignCommand = gatkRealignFromTarget(
+    realignCommand = realignFromTarget(
         inBam = inBam, inVcf = inVcf, reference = reference,
         inputList = listFile, outBam = outBam, javaPath = javaPath,
         gatkPath = gatkPath
@@ -95,13 +95,105 @@ def gatkRealign(
     # Return command
     return(jointCommand)
 
-#command = gatkRealign(
-#    inBam = '/farm/scratch/rs-bio-lif/rabino01/Elza/MOUSE-T1R1_sort_dedup.bam',
-#    outBam = '/farm/scratch/rs-bio-lif/rabino01/MOUSE-T1R1_sort_dedup_realign.bam',
-#    inVcf = '/farm/scratch/rs-bio-lif/rabino01/Elza/genome/mgp.v5.merged.indels.dbSNP142.normed.vcf.gz',
+def baseRecal(
+        inBam, inVcf, bsqrTable, reference, javaPath = 'java',
+        gatkPath = 'GenomeAnalysisTK.jar'
+    ):
+    ''' Function generates a command to generate a base quality score
+    recalibration (BSQR) table. Function takes 6 arguments:
+    
+    1)  inBam - Full path to input BAM file.
+    2)  inVcf - Input VCF file listing SNPs. May be gzipped.
+    3)  bsqrTable - Full path to output BSQR report.
+    4)  reference - Fasta file contaning referenc genome sequence.
+    5)  javaPath - Path to java.
+    6)  gatkPath - Path to GATK jar file.
+    
+    '''
+    # Create command
+    recalCommand = [javaPath, '-jar', gatkPath, '-T BaseRecalibrator -R',
+        reference, '-I', inBam, '--knownSites', inVcf, '-o', bsqrTable]
+    # Join and return command
+    recalCommand = ' '.join(recalCommand)
+    return(recalCommand)
+
+def recalApply(
+        inBam, outBam, reference, bsqrTable, javaPath = 'java',
+        gatkPath = 'GenomeAnalysisTK.jar', delete = True
+    ):
+    ''' Function generates a command to generate a base quality score
+    recalibration (BSQR) table. Function takes 6 arguments:
+    
+    1)  inBam - Full path to input BAM file.
+    2)  outBam - Full path to output BAM file.
+    3)  bsqrTable - Full path to BSQR report.
+    4)  reference - Fasta file contaning referenc genome sequence.
+    5)  javaPath - Path to java.
+    6)  gatkPath - Path to GATK jar file.
+    
+    '''
+    # Create command
+    recalCommand = [javaPath, '-jar', gatkPath, '-T PrintReads -R',
+        reference, '-I', inBam, '-BQSR', bsqrTable, '-o', outBam]
+    # Join and return command
+    recalCommand = ' '.join(recalCommand)
+    return(recalCommand)
+
+def bsqr(
+        inBam, outBam, inVcf, reference, bsqrTable = '', javaPath = 'java',
+        gatkPath = 'GenomeAnalysisTK.jar', delete = True
+    ):
+    ''' Function combines the functions gatkRealignTargetCreator and
+    gatkRealignFromTarget to perform local realignment around indels. Function
+    takes 6 arguments:
+    
+    1)  inBam - Full path to input BAM file.
+    2)  outBam - Full path to output BAM file.
+    3)  inVcf - Imput VCF file listing SNPs. May be gzipped.
+    4)  reference - Fasta file contaning referenc genome sequence.
+    5)  bsqrTable - Full path at which to save BSQR report.
+    5)  javaPath - Path to java.
+    7)  gatkPath - Path to GATK jar file.
+    8)  delete - Boolean, indicating whether to delete input BAM.
+    
+    '''
+    # Cheack BAM file and create name of output target list file
+    if not inBam.endswith('.bam') or not outBam.endswith('.bam'):
+        raise IOError("BAM filenames must end '.bam'")
+    if bsqrTable:
+        delTable = False
+    else:
+        delTable = True
+        bsqrTable = inBam[:-4] + '_bsqr.grp'
+    # Create command to generate target files
+    bsqrTableGenerate = baseRecal(
+        inBam = inBam, inVcf = inVcf, bsqrTable = bsqrTable,
+        reference = reference, javaPath = javaPath,
+        gatkPath = gatkPath
+    )
+    # Create command to perform realignment
+    bsqrTableApply = recalApply(
+        inBam = inBam, reference = reference,
+        bsqrTable = bsqrTable, outBam = outBam, javaPath = javaPath,
+        gatkPath = gatkPath
+    )
+    # Join command and add deletion if required
+    jointCommand = '%s && %s' %(bsqrTableGenerate, bsqrTableApply)
+    if delete and delTable:
+        jointCommand += ' && rm %s.ba?* %s' %(inBam[:-4], bsqrTable)
+    elif delete:
+        jointCommand += ' && rm %s.ba?*' %(inBam[:-4])
+    elif delTable:
+        jointCommand += ' && rm %s' %(bsqrTable)
+    # Return command
+    return(jointCommand)
+
+#command = gatkBSQR(
+#    inBam = '/farm/scratch/rs-bio-lif/rabino01/Elza/MOUSE-T1R1_dedup_realign.bam',
+#    outBam = '/farm/scratch/rs-bio-lif/rabino01/Elza/MOUSE-T1R1_dedup_realign_recal.bam',
 #    reference = '/farm/scratch/rs-bio-lif/rabino01/Elza/genome/mm10.fa',
+#    inVcf = '/farm/scratch/rs-bio-lif/rabino01/Elza/genome/mgp.v5.merged.snps_all.dbSNP142.vcf.gz',
 #    javaPath = '/farm/babs/redhat6/software/jdk1.7.0_40/bin/java',
-#    gatkPath = '/farm/babs/redhat6/software/gatk-3.5.0/GenomeAnalysisTK.jar',
-#    threads = 4, delete = False
+#    gatkPath = '/farm/babs/redhat6/software/gatk-3.5.0/GenomeAnalysisTK.jar'
 #)
 #print command
