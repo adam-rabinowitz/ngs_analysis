@@ -1,9 +1,9 @@
-'''alignSortIndex.py
+'''variantAnalysisAlign.py
 
 Usage:
     
-    alignSortIndex.py <sampledata> <indir> <outdir> <index> <indelvcf>
-        <pathfile> [--threads=<threads>]
+    variantAnalysisAlign.py <sampledata> <indir> <outdir> <index>
+        <indelvcf> <snpvcf> <pathfile> [--threads=<threads>]
     
 Options:
     
@@ -27,14 +27,13 @@ args['prefix'], args['name'] = args['<sampledata>'].split(',')
 # Split input directories into a list
 args['<indir>'] = args['<indir>'].split(',')
 # Read in path file
-paths = {}
+paths ={}
 with open(args['<pathfile>'], 'r') as pfile:
     for line in pfile:
         program, path = line.strip().split('\t')
         paths[program] = path
-print paths
 # Create folder for log files
-args['logdir'] = os.path.join(args['<outdir>'], 'logData')
+args['logdir'] = os.path.join(args['<outdir>'], args['name'] + '_log')
 if not os.path.isdir(args['logdir']):
     os.mkdir(args['logdir'])
 # Find fastq files
@@ -51,20 +50,23 @@ outfiles = {
     'initialbam' : bamPrefix + '.bam',
     'dedupbam' : bamPrefix + '_dedup.bam',
     'realignbam' : bamPrefix + '_dedup_realign.bam',
+    'recalbam' : bamPrefix + '_dedup_realign_recal.bam',
     'listfile' : logPrefix + '_target.list',
+    'bsqrfile' : logPrefix + '_bsqr.grp',
     'alignlog' : logPrefix + '_align.log',
     'deduplog1' : logPrefix + '_dedup_1.log',
     'deduplog2' : logPrefix + '_dedup_2.log',
-    'realignlog' : logPrefix + '_realign.log'
+    'realignlog' : logPrefix + '_realign.log',
+    'recallog' : logPrefix + '_recal.log'
 }
 # Generate command for alignment
 alignCommand = fastqAlign.bwaMemAlign(
     index = args['<index>'], outFile = outfiles['initialbam'],
     read1 = read1[0], read2 = read2[0], bwaPath = paths['bwa'],
     threads = args['--threads'], sampleName = args['name'],
-    libraryID = args['prefix'], readGroup = 1, markSecondary = True,
-    checkIndex = True, samtoolsPath = paths['samtools'], memory = 2,
-    nameSort = False
+    libraryID = args['prefix'], readGroup = 1, platform = 'ILLUMINA',
+    markSecondary = True, checkIndex = True, samtoolsPath = paths['samtools'],
+    memory = 2, nameSort = False
 )
 # Mark duplicates using picard
 dedupCommand = picard.markDuplicates(
@@ -79,24 +81,34 @@ realignCommand = gatk.gatkRealign(
     javaPath = paths['java'], gatkPath = paths['gatk'], delete = True,
     threads = 4, listFile = outfiles['listfile']
 )
-# Submit jobs
-alignJobID = moab.submitjob(
+recalCommand = gatk.bsqr(
+    inBam = outfiles['realignbam'], outBam = outfiles['recalbam'],
+    inVcf = args['<snpvcf>'], reference = args['<index>'],
+    bsqrTable = outfiles['bsqrfile'], javaPath = paths['java'],
+    gatkPath = paths['gatk'], delete = True
+)
+# Add jobs to moabJobs object
+moabJobs = moab.moabJobs()
+alignID = moabJobs.add(
     alignCommand, stdout = outfiles['alignlog'], stderr = outfiles['alignlog'],
-    processor = args['--threads']
+    processors = args['--threads']
 )
-print alignCommand 
-print alignJobID
-dedupJobID = moab.submitjob(
+dedupID = moabJobs.add(
     dedupCommand, stdout = outfiles['deduplog2'],
-    stderr = outfiles['deduplog2'], processor = 1,
-    dependency = alignJobID
+    stderr = outfiles['deduplog2'], processors = 1,
+    dependency = [alignID]
 )
-print dedupCommand
-print dedupJobID
-realignJobID = moab.submitjob(
+realignID = moabJobs.add(
     realignCommand, stdout = outfiles['realignlog'],
-    stderr = outfiles['realignlog'], processor = args['--threads'],
-    dependency = dedupJobID
+    stderr = outfiles['realignlog'], processors = args['--threads'],
+    dependency = [dedupID]
 )
-print realignCommand
-print realignJobID
+recalID = moabJobs.add(
+    recalCommand, stdout = outfiles['recallog'],
+    stderr = outfiles['recallog'], processors = 1,
+    dependency = [realignID]
+)
+# Submit jobs and print moab identifiers
+moabSubmission = moabJobs.submit()
+for command, moabID in moabSubmission:
+    print '%s\n%s\n' %(command, moabID)
