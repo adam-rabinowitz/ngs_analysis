@@ -1,9 +1,10 @@
 import os
 import sys
 from ngs_python.bam import samtools
+from general_python import toolbox
 
 def bowtie2Align(
-        index, outSam, read1, read2 = '', path = 'bowtie2',
+        index, outSam, read1, read2 = None, path = 'bowtie2',
         threads = 1, discordant = False, mixed = False, upto = None,
         check = True
     ):
@@ -22,32 +23,28 @@ def bowtie2Align(
     10) check - Boolean; whether to check for index entensions.
     
     '''
-    # check for index etensions
-    if isinstance(check, bool):
-        if check:
-            suffixes = ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
-                '.rev.2.bt2']
-            for s in suffixes:
-                if not os.path.isfile(index + s):
-                    raise IOError('Index file %s no found' %(index + s))
-    else:
-        raise ValueError("'check' argument must be boolean") 
+    # Check for index etensions
+    toolbox.checkArg(check, 'bool')
+    if check:
+        suffixes = ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
+            '.rev.2.bt2']
+        for s in suffixes:
+            if not os.path.isfile(index + s):
+                raise IOError('Index file %s no found' %(index + s))
     # Check and process discordant
-    if not isinstance(discordant,bool):
-        raise IOError("'discordant' argument must be boolean")
+    toolbox.checkArg(discordant, 'bool')
+    if discordant:
+        discordant = ''
     else:
-        if discordant:
-            discordant = ''
-        else:
-            discordant = '--no-discordant'
+        discordant = '--no-discordant'
     # Check mixed
-    if not isinstance(mixed,bool):
-        raise IOError("'mixed' argument must be boolean")
+    toolbox.checkArg(mixed, 'bool')
+    if mixed:
+        mixed = ''
     else:
-        if mixed:
-            mixed = ''
-        else:
-            mixed = '--no-mixed'
+        mixed = '--no-mixed'
+    # Check upto argument
+    toolbox.checkArg(upto, 'int', mn=1)
     # Join multiple fastq files
     if isinstance(read1, list):
         read1 = ','.join(read1)
@@ -70,9 +67,9 @@ def bowtie2Align(
     return(bowtie2Command)
 
 def bwaMemAlign(
-        index, outFile, read1, read2 = '', bwaPath = 'bwa', threads = 1,
+        index, outFile, read1, read2 = None, bwaPath = 'bwa', threads = 1,
         readGroup = 1, sampleName = None, libraryID = None, platform = None,
-        markSecondary = True, checkIndex = True, samtoolsPath = 'samtools',
+        markSecondary = True, check = True, samtoolsPath = 'samtools',
         memory = '2', nameSort = False
     ):
     ''' Function to generate command to perform BWA mem alignment of single
@@ -91,29 +88,25 @@ def bwaMemAlign(
     8)  libraryID - Name of sample to be used in header.
     9)  readGroup - Name of read group to use in header and alignments.
     10) markSecondary - Boolean, whether to mark secondary alignments.
-    11) checkIndex - Boolean, whether to check for index extensions.
+    11) check - Boolean, whether to check for index extensions.
     12) samtoolsPath - Full path to samtools executable.
     13) memory - Memory, in G, to use in generating BAM file.
     14) nameSort - Boolean, whether to generate a name sorted BAM file.
     
     '''
     # Check index extensions if requested
-    if isinstance(checkIndex, bool):
-        if checkIndex:
-            suffixes = ['.amb', '.ann', '.bwt', '.pac', '.sa']
-            for s in suffixes:
-                if not os.path.isfile(index + s):
-                    raise IOError('Genome index file %s no found' %(index + s))
-    else:
-        raise ValueError("'check' argument must be boolean") 
+    toolbox.checkArg(check, 'bool')
+    if check:
+        suffixes = ['.amb', '.ann', '.bwt', '.pac', '.sa']
+        for s in suffixes:
+            if not os.path.isfile(index + s):
+                raise IOError('Genome index file %s no found' %(index + s))
     # Process secondary command
-    if isinstance(markSecondary, bool):
-        if markSecondary:
-            markSecondary = '-M'
-        else:
-            markSecondary = ''
+    toolbox.checkArg(markSecondary, 'bool')
+    if markSecondary:
+        markSecondary = '-M'
     else:
-        raise ValueError("'markSecondary' argument must be boolean")
+        markSecondary = ''
     # Check outut file name and generate intermediate file names
     if outFile.endswith('.sam'):
         outSam = outFile
@@ -156,7 +149,7 @@ def bwaMemAlign(
     return(completeCommand)
 
 def rsemBowtie2Align(
-        index, outPrefix, read1, read2 = '',
+        index, outPrefix, read1, read2 = None,
         rsemPath = 'rsem-calculate-expression', bowtie2Path = '', threads = 1,
         forProb = 0.5, genomeBam = True, estimateRspd = True, check = True
     ):
@@ -176,37 +169,33 @@ def rsemBowtie2Align(
     9)  genomeBam - Boolean, whether to generate a genome BAM file.
     10) esitmateRspd - Boolean, estimate read start position distribution.
     11) check - Boolean, check if correctindex suffixes are present
-
+    
     '''
     # Check for correct suffixes
-    if isinstance(check, bool):
-        if check:
-            suffix = ['.grp', '.ti', '.transcripts.fa', '.seq', '.chrlist',
+    toolbox.checkArg(check, 'bool')
+    if check:
+        suffix = [
+            '.grp', '.ti', '.transcripts.fa', '.seq', '.chrlist',
             '.idx.fa', '.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
-            '.rev.2.bt2']
-            for s in suffix:
-                if not os.path.isfile(index + s):
-                    raise IOError('Could not find index file %s' %(
-                        index + s
-                    ))
-    else:
-        raise IOError("'Check' argument must be boolean")
+            '.rev.2.bt2'
+        ]
+        for s in suffix:
+            if not os.path.isfile(index + s):
+                raise IOError('Could not find index file %s' %(
+                index + s
+            ))
     # Process genomeBAM argument
-    if isinstance(genomeBam, bool):
-        if genomeBam:
-            genomeBam = '--output-genome-bam'
-        else:
-            genomeBam = ''
+    toolbox.checkArg(genomeBam, 'bool')
+    if genomeBam:
+        genomeBam = '--output-genome-bam'
     else:
-        raise IOError("'genomeBam' argument must be boolean")
+        genomeBam = ''
     # Process estimateRspd argument
-    if isinstance(estimateRspd, bool):
-        if estimateRspd:
-            estimateRspd = '--estimate-rspd'
-        else:
-            estimateRspd = ''
+    toolbox.checkArg(estimateRspd, 'bool')
+    if estimateRspd:
+        estimateRspd = '--estimate-rspd'
     else:
-        raise IOError("'estimateRspd' argument must be boolean")
+        estimateRspd = ''
     # Process read arguments
     if isinstance(read1, list):
         read1 = ','.join(read1)
@@ -231,8 +220,8 @@ def rsemBowtie2Align(
     return(rsemCommand)
 
 def tophat2Align(
-        genomeIndex, transcriptIndex, outDir, read1, read2 = '',
-        path = 'tophat', forProb = 0.5, mateDist = 20, mateSD = 50,
+        genomeIndex, transcriptIndex, outDir, read1, read2 = None,
+        path = 'tophat', forProb = 0.5, mateDist = 50, mateSD = 20,
         threads = 1, sampleName = '', libraryID = '', readGroup = '',
         discordant = True, mixed = True, check = True
     ):
@@ -260,70 +249,71 @@ def tophat2Align(
     
     '''
     # Check for suffixes to transcriptome and genome indices
-    if isinstance(check, bool):
-        if check:
-            # Check for Bowtie2 Genome indeces
-            suffix = ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
-                '.rev.2.bt2', '.fa']
-            for s in suffix:
-                if not os.path.isfile(genomeIndex + s):
-                    raise IOError('Genome index file %s not found' %(
-                        genomeIndex + s
-                    ))
-                if not os.path.isfile(transcriptIndex + s):
-                    raise IOError('Transcript index file %s not found' %(
-                        transcriptIndex + s
-                    ))
-    else:
-        raise IOError("'Check' argument must be boolean")
+    toolbox.checkArg(check, 'bool')
+    if check:
+        # Check for Bowtie2 Genome indeces
+        suffix = ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
+            '.rev.2.bt2', '.fa']
+        for s in suffix:
+            if not os.path.isfile(genomeIndex + s):
+                raise IOError('Genome index file %s not found' %(
+                    genomeIndex + s
+                ))
+            if not os.path.isfile(transcriptIndex + s):
+                raise IOError('Transcript index file %s not found' %(
+                    transcriptIndex + s
+                ))
     # Process forProb argument
-    if float(forProb) == 1:
+    toolbox.checkArg(forProb, 'num', mn = 0, mx = 1)
+    if forProb == 1:
         forProb = 'fr-secondstrand'
-    elif float(forProb) == 0:
+    elif forProb == 0:
         forProb = 'fr-firststrand'
-    elif float(forProb) > 0 and float(forProb) < 1:
+    else:
         forProb = 'fr-unstranded'
-    else:
-        raise IOError("'forProb' argument must be >= 0 and <= 1")
     # Process discordant
-    if isinstance(discordant, bool):
-        if discordant:
-            discordant = ''
-        else:
-            discordant = '--no-discordant'
+    toolbox.checkArg(discordant, 'bool')
+    if discordant:
+        discordant = ''
     else:
-        raise IOError("'discordant' argument must be boolean")
+        discordant = '--no-discordant'
     # Process mixed
-    if isinstance(mixed, bool):
-        if mixed:
-            mixed = ''
-        else:
-            mixed = '--no-mixed'
+    toolbox.checkArg(mixed, 'bool')
+    if mixed:
+        mixed = ''
     else:
-        raise IOError("'mixed' argument must be boolean")
+        mixed = '--no-mixed'
     # Process read arguments
     if isinstance(read1, list):
         read1 = ','.join(read1)
+    toolbox.checkArg(read1, 'str')
     if isinstance(read2, list):
         read2 = ','.join(read2)
+    toolbox.checkArg(read2, 'str')
     # Build tophat2 command
-    tophat2Command = [path, '-o', outDir, '-p', str(threads),
-        '--transcriptome-index', transcriptIndex, '--mate-inner-dist',
-        str(mateDist), '--mate-std-dev', str(mateSD), discordant,
+    tophatCommand = [path, '-o', outDir, '-p', str(threads),
+        '--transcriptome-index', transcriptIndex, discordant,
         mixed, '--library-type', forProb, '--keep-fasta-order',
         '--b2-very-sensitive', genomeIndex, read1, read2]
-    # Add read group options to command
+    # Process mate arguments
+    toolbox.checkArg(mateDist, 'int', mn = -100, mx = 5000)
+    toolbox.checkArg(mateSD, 'int', gt = 0, mx = 5000)
+    if read2:
+        mateArgument = ['--mate-inner-dist', str(mateDist),
+            '--mate-std-dev', str(mateSD)]
+        tophatCommand = tophatCommand[:7] + mateArgument + tophatCommand[7:]
+    # Add read group information
     if sampleName:
-        tophat2Command.insert(-3, '--rg-sample')
-        tophat2Command.insert(-3, sampleName)
+        tophatCommand.insert(-3, '--rg-sample')
+        tophatCommand.insert(-3, sampleName)
     if libraryID:
-        tophat2Command.insert(-3, '--rg-library'), 
-        tophat2Command.insert(-3, libraryID)
+        tophatCommand.insert(-3, '--rg-library'), 
+        tophatCommand.insert(-3, libraryID)
     if readGroup:
-        tophat2Command.insert(-3, '--rg-id',)
-        tophat2Command.insert(-3, readGroup)
+        tophatCommand.insert(-3, '--rg-id',)
+        tophatCommand.insert(-3, readGroup)
     # Concatenate and return command
-    tophat2Command = filter(None, tophat2Command)
-    tophat2Command = ' '.join(tophat2Command)
-    return(tophat2Command)
+    tophatCommand = filter(None, tophatCommand)
+    tophatCommand = ' '.join(tophatCommand)
+    return(tophatCommand)
 
