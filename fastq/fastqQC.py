@@ -1,4 +1,5 @@
 import re
+import os
 
 def fastQC(inFile, outDir, path = 'fastqc'):
     ''' This function performs a FastQC analysis on a fastq file and
@@ -13,12 +14,12 @@ def fastQC(inFile, outDir, path = 'fastqc'):
     # Extract sample name
     name = re.search('([^/]+)\\.fastq(?:\\.gz){0,1}$',inFile).group(1)
     # Create FastQC command and return it
-    fastqcCommand = '%s --extract -q -o %s %s; rm %s %s' %(
+    fastqcCommand = '%s --extract -q -o %s %s && rm %s %s' %(
         path,
         outDir,
         inFile,
-        outDir + name + '_fastqc.html',
-        outDir + name + '_fastqc.zip'
+        os.path.join(outDir, name + '_fastqc.html'),
+        os.path.join(outDir, name + '_fastqc.zip')
     )
     # Execute or return command
     return(fastqcCommand)

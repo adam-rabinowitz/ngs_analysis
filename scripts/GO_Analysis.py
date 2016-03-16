@@ -23,7 +23,7 @@ import collections
 import scipy.stats
 import pandas
 import statsmodels.stats.multitest as ssm
-from general_functions import docopt
+from general_python import docopt
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')
 args['--mingo'] = int(args['--mingo'])
