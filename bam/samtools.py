@@ -1,6 +1,7 @@
 import subprocess
 import re
 import os
+from general_python import toolbox
 
 def sam2bam(
         inSam, outBam, path = 'samtools', threads = 1, delete = True
@@ -148,3 +149,40 @@ def sort(
         )
     # Return command
     return(outputCommand)
+    
+def mpileup(
+        inBam, outFile, reference = '', minMapQ = 20, minBaseQ = 20,
+        countOrphans = False, countDup = False, disableBAQ = True,
+        maxDepth = 10000, minFilter = None, path = 'samtools'
+    ):
+    # Check numeric arguments
+    toolbox.checkArg(minMapQ, 'int', mn = 2)
+    toolbox.checkArg(minBaseQ, 'int', mn = 0)
+    toolbox.checkArg(countOrphans, 'bool')
+    toolbox.checkArg(countDup, 'bool')
+    toolbox.checkArg(disableBAQ, 'bool')
+    toolbox.checkArg(maxDepth, 'int', gt = 0)
+    toolbox.checkArg(minFilter, 'int', mn = 0)
+    # Create initial command
+    command = [path, 'mpileup', '-q', str(minMapQ), '-Q', str(minBaseQ), '-d',
+        str(maxDepth)]
+    # Add otptions
+    if countOrphans:
+        command.append('-A')
+    if disableBAQ:
+        command.append('-B')
+    if reference:
+        command.extend(['-f', reference])
+    if not countDup:
+        command.extend(['--ff', '1024'])
+    # Process filter
+    if minFilter:
+        command.append(inBam)
+        awk = 'awk \'BEGIN{FS = "\\t"};{if ($4 >= %s) print $0}\'' %(minFilter)
+        finalCommand = '%s | %s > %s' %(' '.join(command), awk, outFile)
+    else:
+        command.extend(['-o', outFile, inBam])
+        finalCommand = ' '.join(command)
+    # Retutn command
+    return(finalCommand)
+
