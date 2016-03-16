@@ -5,7 +5,6 @@ import subprocess
 import cStringIO
 import itertools
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
-from general_functions import writeFile
 
 def fastqCount(fastqFile, shell = True):
     ''' Creates a generator that parses FASTQ files using the 
