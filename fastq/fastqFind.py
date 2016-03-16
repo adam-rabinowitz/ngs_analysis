@@ -25,22 +25,15 @@ def findFastq(prefix, dirList, pair = True, gzip = True):
     read1 = []
     read2 = []
     # Create regular expression to find files
-    if pair and gzip:
+    prefix = re.escape(prefix)
+    if gzip:
         read1Pattern = re.compile(
-            prefix+'.*?R1\\.fastq\\.gz$'
-        )
-    elif pair:
-        read1Pattern = re.compile(
-            prefix+'.*?R1\\.fastq(\\.gz){0,1}$'
-        )
-    elif gzip:
-        read1Pattern = re.compile(
-            prefix+'.*?(R1){0,1}\\.fastq\\.gz$'
+            prefix+'.*?R1(_\\d{3}){0,1}\\.fastq\\.gz$'
         )
     else:
         read1Pattern = re.compile(
-            prefix+'.*?(R1){0,1}\\.fastq(\\.gz){0,1}$'
-        ) 
+            prefix+'.*?R1(_\\d{3}){0,1}\\.fastq$'
+        )
     # Loop through directories to find fastq files
     for directory in dirList:
         # Extract file names
@@ -74,7 +67,9 @@ def findFastq(prefix, dirList, pair = True, gzip = True):
                     else:
                         read1Path = os.path.join(dirpath, f)
                         read1.append(read1Path)
-    # Return data
+    # Sort and return data
+    read1.sort()
+    read2.sort()
     if pair:
         return(read1,read2)
     else:
