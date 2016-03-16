@@ -65,14 +65,14 @@ alignCommand = fastqAlign.bwaMemAlign(
     read1 = read1[0], read2 = read2[0], bwaPath = paths['bwa'],
     threads = args['--threads'], sampleName = args['name'],
     libraryID = args['prefix'], readGroup = 1, platform = 'ILLUMINA',
-    markSecondary = True, checkIndex = True, samtoolsPath = paths['samtools'],
+    markSecondary = True, check = True, samtoolsPath = paths['samtools'],
     memory = 2, nameSort = False
 )
 # Mark duplicates using picard
 dedupCommand = picard.markDuplicates(
     inBam = outfiles['initialbam'], outBam = outfiles['dedupbam'],
     logFile = outfiles['deduplog1'], picardPath = paths['picard'],
-    javaPath = paths['java'], removeDuplicates = False, delete = True
+    javaPath = paths['java'], removeDuplicates = True, delete = True
 )
 # Perform local realignment
 realignCommand = gatk.gatkRealign(
@@ -109,6 +109,4 @@ recalID = moabJobs.add(
     dependency = [realignID]
 )
 # Submit jobs and print moab identifiers
-moabSubmission = moabJobs.submit()
-for command, moabID in moabSubmission:
-    print '%s\n%s\n' %(command, moabID)
+moabJobs.submit(verbose = True)
