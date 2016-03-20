@@ -1,3 +1,14 @@
+'''RNASeqMetrics.py
+
+Usage:
+    
+    RNASeqMetrics.py <indir> <outprefix> [--singleend]
+    
+Options:
+    
+    --singleend  Samples are single-end sequenced
+    
+'''
 # Import functions
 import sys
 import argparse
@@ -5,37 +16,33 @@ import os
 import pandas
 import re
 import collections
-# Process command line options
-parser = argparse.ArgumentParser(
-    formatter_class = argparse.ArgumentDefaultsHelpFormatter
-)
-# Define arguments
-parser.add_argument('inDir', help = 'Output directory of RNASeqAlign.py',
-    type = str)
-parser.add_argument('outPrefix', help = 'Prefix of output files', type = str)
-parser.add_argument(
-    '-g', '--geneFile', help = 'a file listing gene groups of interest',
-    default = '', type = str)
+from general_python import docopt
 # Extract arguments
-args = parser.parse_args()
+args = docopt.docopt(__doc__,version = 'v1')
 # Extract directories in all top directories 
 dirDict = {}
-dirDict['rsemTranDirList'] = os.listdir(args.inDir + 'rsemTran')
+dirDict['rsemTranDirList'] = os.listdir(
+    os.path.join(args['<indir>'] + 'rsemTran'))
 dirDict['rsemTranDirList'].sort()
-dirDict['tophatDirList'] = os.listdir(args.inDir + 'tophat')
+dirDict['tophatDirList'] = os.listdir(
+    os.path.join(args['<indir>'] + 'tophat'))
 dirDict['tophatDirList'].sort()
-dirDict['fastqDirList'] = os.listdir(args.inDir + 'fastq')
+dirDict['fastqDirList'] = os.listdir(
+    os.path.join(args['<indir>'] + 'fastq'))
 dirDict['fastqDirList'].sort()
-if os.path.isdir(args.inDir + 'rsemSpike'):
-    dirDict['rsemSpikeDirList'] = os.listdir(args.inDir + 'rsemSpike')
+if os.path.isdir(os.path.join(args['<indir>'], 'rsemSpike')):
+    dirDict['rsemSpikeDirList'] = os.listdir(
+    os.path.join(args['<indir>'] + 'rsemSpike'))
     dirDict['rsemSpikeDirList'].sort()
+# Set expected counts
+if args['--singleend']:
+    expect = 1
+else:
+    expect = 2
 # Check that all directories contain the same sub directories
 for number, directory in enumerate(dirDict):
     if number:
         if subDir != dirDict[directory]:
-            print subDir
-            print dirDict[directory]
-            print dirDict
             raise IOError('Sub-directories are not identical')
     else:
         subDir = dirDict[directory]
@@ -45,7 +52,7 @@ tpmCounts = pandas.DataFrame()
 columns = ['initial_reads', 'trim_loss_rate', 'aligned_reads',
         'rsem_tran_align', 'tophat_align', 'expressed_genes', 'exonic_rate',
         'intragenic_rate', 'intergenic_rate', 'duplication_rate', 'rRNA_rate']
-if os.path.isdir(args.inDir + 'rsemSpike'):
+if os.path.isdir(os.path.join(args['<indir>'], 'rsemSpike')):
     columns.insert(4,'rsem_spike_align')
 qcMetrics = pandas.DataFrame( columns = columns,
     index = dirDict['rsemTranDirList'] )
@@ -54,7 +61,7 @@ qcMetrics = pandas.DataFrame( columns = columns,
 ## Process RSEM Transcript data
 ################################################################################
 # Loop through directory and extract rsem data
-os.chdir(args.inDir + 'rsemTran')
+os.chdir(os.path.join(args['<indir>'], 'rsemTran'))
 for directory in dirDict['rsemTranDirList']:
     # Generate name of gene results file
     geneFileName = '%s/%s.genes.results' %(
@@ -96,8 +103,8 @@ for directory in dirDict['rsemTranDirList']:
 ################################################################################
 ## Process RSEM Spike Data
 ################################################################################
-if os.path.isdir(args.inDir + 'rsemSpike'):
-    os.chdir(args.inDir + 'rsemSpike')
+if os.path.isdir(os.path.join(args['<indir>'], 'rsemSpike')):
+    os.chdir(os.path.join(args.inDir, 'rsemSpike'))
     for directory in dirDict['rsemTranDirList']:
         # Generate name of rsem count file
         countFileName = '%s/%s.stat/%s.cnt' %(
@@ -117,31 +124,10 @@ if os.path.isdir(args.inDir + 'rsemSpike'):
             print "No RSEM spike-in '.cnt' file for sample %s" %(directory)
 
 ################################################################################
-## Extract mean TPM values for specified groups of genes
-################################################################################
-if args.geneFile:
-    # Create function to extract mean gene counts from data frame
-    def extractMeanCounts(tpmCounts, geneList):
-        # Extract gene counts and mean values
-        geneCounts = tpmCounts.loc[geneList]
-        meanValues = geneCounts.mean(axis=0)
-        return(meanValues)
-    # Extract gene data from file
-    geneDict = collections.defaultdict(set)
-    geneListFile = open(args.geneFile, 'r')
-    for geneData in geneListFile:
-        geneTerm, geneName = geneData.strip().split('\t')
-        geneDict[geneTerm].add(geneName)
-    geneListFile.close()
-    # Extract metrics for gene lists
-    for geneTerm in geneDict:
-        qcMetrics[geneTerm] = extractMeanCounts(tpmCounts, geneDict[geneTerm])
-
-################################################################################
 ## Process Tophat Data
 ################################################################################
 # Loop through directory and extract tophat and rnaseqc data
-os.chdir(args.inDir + 'tophat')
+os.chdir(os.path.join(args['<indir>'], 'tophat'))
 for directory in dirDict['tophatDirList']:
     # Generate name of alignment file
     alignFileName = '%s/align_summary.txt' %(
@@ -154,9 +140,8 @@ for directory in dirDict['tophatDirList']:
         tophatAlignFile.close()
         inputValues = map(int, re.findall('Input\s+:\s+(\d+)',alignData) )
         mappedValues = map(int, re.findall('Mapped\s+:\s+(\d+)',alignData) )
-        if (len(inputValues) == 2 and
-            len(mappedValues) == 2 and
-            inputValues[0] == inputValues[1]):
+        if (len(inputValues) == expect and
+            len(mappedValues) == expect):
             qcMetrics.loc[directory,'tophat_align'] = (sum(mappedValues) /
                 float(sum(inputValues)))
         else:
@@ -190,7 +175,7 @@ for directory in dirDict['tophatDirList']:
 ## Process FASTQ data
 ################################################################################
 # Loop through directory and extract fastq data
-os.chdir(args.inDir + 'fastq')
+os.chdir(os.path.join(args['<indir>'], 'fastq'))
 for directory in dirDict['fastqDirList']:
     # Generate file name of trim log file
     trimFileName = '%s/%s_trim.log' %(
@@ -204,7 +189,7 @@ for directory in dirDict['fastqDirList']:
     # Extract trimmed reads
     processed = re.findall('Processed reads:\s+(\d+)', trimData)
     tooShort = re.findall('Too short reads:\s+(\d+)', trimData)
-    if len(processed) == 2 and len(tooShort) == 2:
+    if len(processed) == expect and len(tooShort) == expect:
         qcMetrics.loc[directory, 'initial_reads'] = processed[0]
         qcMetrics.loc[directory, 'trim_loss_rate'] = sum(map(int,tooShort)) / float(int(processed[0]))
     else:
@@ -212,15 +197,14 @@ for directory in dirDict['fastqDirList']:
 
 # Save output data to file
 expectedCounts.to_csv(
-    args.outPrefix + '_gene.exp',
+    args['<outprefix>'] + '_gene.exp',
     sep = '\t'
 )
 tpmCounts.to_csv(
-    args.outPrefix + '_gene.tpm',
+    args['<outprefix>'] + '_gene.tpm',
     sep = '\t'
 )
-print qcMetrics
 qcMetrics.to_csv(
-    args.outPrefix + '.qc',
+    args['<outprefix>'] + '.qc',
     sep = '\t'
 )
