@@ -187,7 +187,7 @@ rsemTranCommand = '%s && rm %s %s' %(
 # Submit rsem transcript command
 rsemTranJobID = moabJobs.add(
     command = rsemTranCommand,
-    processors = 4,
+    processors = args['--threads'],
     stdout = args['rsemTranLog'],
     stderr = args['rsemTranLog'],
     dependency = [trimReadsJobID]
@@ -221,7 +221,7 @@ if args['--rsemspikeindex']:
     # Submit command
     rsemSpikeJobID = moabJobs.add(
         command = rsemSpikeCommand,
-        processors = 4,
+        processors = args['--threads'],
         stdout = args['rsemSpikeLog'],
         stderr = args['rsemSpikeLog'],
         dependency = [trimReadsJobID]
@@ -274,7 +274,8 @@ else:
         path = paths['samtools']
     )
     # Calculate insert metrics
-    metricsCommand = 'read m s <<< $(python %s %s)' %(
+    metricsCommand = 'read m s <<< $(%s %s %s)' %(
+        paths['python'],
         paths['distance'],
         args['nsortBam']
     )
@@ -359,6 +360,4 @@ seqcJobID = moabJobs.add(
 # Submit commands
 ################################################################################
 # Submit jobs and print command
-#moabJobs.submit(verbose = True)
-for x in moabJobs.commandDict.items():
-    print x
+moabJobs.submit(verbose = True)
