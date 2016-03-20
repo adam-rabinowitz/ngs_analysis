@@ -296,8 +296,10 @@ def tophat2Align(
         mixed, '--library-type', forProb, '--keep-fasta-order',
         '--b2-very-sensitive', genomeIndex, read1, read2]
     # Process mate arguments
-    toolbox.checkArg(mateDist, 'int', mn = -100, mx = 5000)
-    toolbox.checkArg(mateSD, 'int', gt = 0, mx = 5000)
+    if not mateDist.startswith('$'):
+        toolbox.checkArg(mateDist, 'int', mn = -100, mx = 5000)
+    if not mateDist.startswith('$'):
+        toolbox.checkArg(mateSD, 'int', gt = 0, mx = 5000)
     if read2:
         mateArgument = ['--mate-inner-dist', str(mateDist),
             '--mate-std-dev', str(mateSD)]
