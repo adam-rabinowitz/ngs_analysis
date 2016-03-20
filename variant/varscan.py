@@ -93,3 +93,104 @@ def copynumber(
         return('%s && %s' %(ratioCommand, ' '.join(copyCommand)))
     else:
         return(' '.join(copyCommand))
+
+def filterSomatic(
+        inFile, outFile, minCov = 10, minReads = 2, minStrands = 1,
+        minAvgQ = 10, minVarFreq = 0.1, pValue = 0.01, indelFile = None,
+        javaPath = 'java', varscanPath = 'varscan.jar'
+    ):
+    '''
+    1)  minCov - Minimum read depth.
+    2)  minReads - Minimum supporting reads for a variant.
+    3)  minStrands - Minimum number of strands on which variant observed.
+    4)  minAvgQ - Minimum average base quality for variant-supporting reads.
+    5)  minVarFreq - Minimum variant allele frequency threshold.
+    6)  pValue - Default p-value threshold for calling variants.
+    7)  indelFile - File of indels for filtering nearby SNPs.
+    8)  outFile - Output file for filtered variants.
+    
+    '''
+    # Check numerical arguments
+    toolbox.checkArg(minCov, 'int', mn = 1)
+    toolbox.checkArg(minReads, 'int', mn = 1)
+    toolbox.checkArg(minStrands, 'int', mn = 1, mx = 2)
+    toolbox.checkArg(minAvgQ, 'int', mn = 2)
+    toolbox.checkArg(minVarFreq, 'num', gt = 0, mx = 1)
+    toolbox.checkArg(pValue, 'num', gt = 0, mx = 1)
+    # Create command
+    command = [javaPath, '-jar', varscanPath, 'somaticFilter', inFile,
+        '--min-coverage', str(minCov), '--min-reads2', str(minReads),
+        '--min-strands2', str(minStrands), '--min-avg-qual', str(minAvgQ),
+        '--min-var-freq', str(minVarFreq), '--p-value', str(pValue),
+        '--output-file', outFile]
+    # Append indel file if supplied
+    if indelFile:
+        command.extend(['--indel-file', indelFile])
+    # Return command
+    command = ' '.join(command)
+    return command
+
+def varscan2annovar(
+        inFile, outFile
+    ):
+    '''
+    Function to convert an varscan putput file to an annovar input file
+    
+    '''
+    # Open input file and skip header
+    inputFile = open(inFile, 'r')
+    inputHeader = inputFile.next()
+    # Open output temporary file to store annovar input
+    outputFile = open(outFile, 'w')
+    # Loop through file and save data as av input
+    for line in inputFile:
+        # extract line data
+        lineData = line.strip().split('\t')
+        chrom, position, reference, variants = lineData[:4]
+        # Loop through potential variants
+        for var in variants.split('/'):
+            # Process SNV
+            if len(var) == 1:
+                # Create variant name
+                variantName = '%s:%s:%s:%s' %(
+                    chrom, position, reference, var
+                )
+                # Write variant data to output file
+                outputFile.write("%s\t%s\t%s\t%s\t%s\t%s\n" %(
+                    chrom, position, position, reference, var, variantName
+                ))
+            # Process deletions
+            elif "-" in var:
+                # Modify positional and variant values
+                start = int(position) + 1
+                end = start + (len(var) - 2)
+                var = reference + ("-" * (len(var) - 1))
+                # Create variant name
+                variantName = '%s:%s:%s:%s' %(
+                    chrom, position, reference, var
+                )
+                # Write variant data to output file
+                outputFile.write("%s\t%s\t%s\t%s\t%s\t%s\n" %(
+                    chrom, start, end, 0, var[1:], variantName
+                ))
+            # Process insertions
+            else:
+                # Modify variant value
+                var = reference + var[1:]
+                # Create variant name
+                variantName = '%s:%s:%s:%s' %(
+                    chrom, position, reference, var
+                )
+                # Write variant data to output file
+                outputFile.write("%s\t%s\t%s\t%s\t%s\t%s\n" %(
+                    chrom, position, position, reference, '+' + var[1:],
+                    variantName
+                ))
+    # Close input and output files
+    inputFile.close()
+    outputFile.close()
+
+#varscan2annovar(
+#    inFile = '/farm/scratch/rs-bio-lif/rabino01/Elza/varscan/310123-T1R1.filter.somatic.snp',
+#    outFile = '/farm/scratch/rs-bio-lif/rabino01/Elza/310123-T1R1.filter.somatic.av'
+#)
