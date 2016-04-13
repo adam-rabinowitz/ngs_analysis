@@ -2,16 +2,16 @@ import pysam
 import collections
 import multiprocessing
 from general_python import toolbox
+from ngs_python.variant import annovar
 import pandas as pd
 from scipy.stats import fisher_exact
-from statsmodels.sandbox.stats.multicomp import multipletests
 
 def pairDist(read1, read2):
     ''' Function calculates inner and outer distance for paired reads if
     they are determined to be concordant. Function takes two arguemnts:
     
-    1)  read1 - Pysam AlignedSegment for read1.
-    2)  read2 - Pysam AlignedSegment for read2.
+    1) read1 - Pysam AlignedSegment for read1.
+    2) read2 - Pysam AlignedSegment for read2.
     
     '''
     # Initialise return variable
@@ -34,6 +34,59 @@ def pairDist(read1, read2):
                 inner = read2.reference_start - read1.reference_end
     # Return return variable
     return(outer, inner)
+
+def createChrDict(bamFile):
+    ''' Function returns a dictionary of chromosome data where the
+    key is the target ID (tid) of the chromosome and the values are
+    a tuple of the chromosome name and the chromosome length. Function
+    takes the following 1 argument:
+    
+    1)  bamFile - Open Pysam AlignmentFile
+    
+    '''
+    # Create tuple of chrosomes
+    chrList = zip(bamFile.references, bamFile.lengths)
+    # Add to dictionary
+    chrDict = {}
+    for c in chrList:
+        tid = bamFile.gettid(c[0])
+        chrDict[tid] = c
+    # Return dictionary
+    return(chrDict)
+    
+def startInterval(read, intervalSize, chrDict):
+    ''' Function returns interval around the start of a read. If the
+    read is aligned to forward strand then the start is defined as the
+    end of the read aligned to the most 5' portion of the reference.
+    If the read is aligned to the reverse strand then the start is defined
+    as end of the read aligned to the most 3' portion of the reference.
+    The function takes the following 3 arguments:
+    
+    1)  read - Pysam AlignedSegment
+    2)  intervalSize - Size of the returned interval
+    3)  chrDict - A dictionary where the keys are the target IDs (tid)
+        of the chromosomes and the values is a tuple of the chromsome
+        name and length.
+    
+    Function returns a tuple of the region in BED format; using zero
+    based indexing and open ended interval.
+    
+    '''
+    # Find site of read start
+    if read.flag & 16:
+        site = read.reference_end
+    else:
+        site = read.reference_start
+    # Calculate start and end of interval
+    halfSize = int(intervalSize / 2)
+    start = site - halfSize
+    end = site + halfSize
+    # Extract chromosome data and adjust start and end
+    chrom, length = chrDict[read.reference_id]
+    start = max(0, start)
+    end = min(length, end)
+    # Return data
+    return((chrom, start, end))
 
 def pairGenerator(bamFile, mapQ = 20):
     ''' Function extracts read pairs from  name sorted BAM files.
@@ -80,14 +133,24 @@ def pairGenerator(bamFile, mapQ = 20):
             readList.append(read)
 
 def baseCalls(
-        sequence, quality, positions, cigartuple, groupDeletions = True
+        read, groupdel = False
     ):
-    # Remove clipping from cigar and extract cigar types
+    # Extract cigar tuple and check
+    cigartuple = read.cigartuples
+    if cigartuple is None:
+        return({})
+    # Remove clipping from cigar
     cigartuple = [x for x in cigartuple if x[0] < 4]
-    # Check cigar types
-    cigartypes = [x[0] for x in cigartuple]
+    # Extract operations from tuple and check
+    tupleSet = set([x[0] for x in cigartuple])
+    if tupleSet.intersection([3, 6, 7, 8]):
+        raise IOError('Irregular cigar found: %s' %(cigartuple))
+    # Extract additional data
+    sequence = list(read.query_alignment_sequence)
+    quality = list(read.query_alignment_qualities)
+    positions = read.get_reference_positions()
     # Process indels
-    if 1 in cigartypes or 2 in cigartypes:
+    if tupleSet.intersection([1, 2]):
         # Trim clipping and indels from start of cigartuple
         while cigartuple:
             # Remove indels not flanked by mapped sequence
@@ -134,35 +197,43 @@ def baseCalls(
         # Reverse and loop through deletion
         deletion.reverse()
         for d in deletion:
-            # Alter sequence to include "-" to signify deletion
-            sequence = sequence[:d[0]] + ['-'] * d[1] + sequence[d[0]:]
-            # Alter quality to mean of flank
-            dQual = (quality[d[0] - 1] + quality[d[0]]) / 2
-            quality = quality[:d[0]] + [dQual] * d[1] + quality[d[0]:]
-            # Alter positions
-            dPos = range(positions[d[0] - 1] + 1,
-                positions[d[0] - 1] + d[1] + 1)
-            positions = positions[:d[0]] + dPos + positions[d[0]:]
-    # Raise error if reference skipped
-    elif 3 in cigartypes:
-        raise IOError('Irregular cigar found: %s' %(cigartuple))
+            # Group deletions
+            if groupdel:
+                # Alter sequence to include "-" to signify deletion
+                sequence = sequence[:d[0]] + ['-' * d[1]] + sequence[d[0]:]
+                # Alter quality to mean of flank
+                dQual = (quality[d[0] - 1] + quality[d[0]]) / 2
+                quality = quality[:d[0]] + [dQual] + quality[d[0]:]
+                # Alter positions
+                dPos = positions[d[0] - 1] + 1
+                positions = positions[:d[0]] + [dPos] + positions[d[0]:]
+            # Associate deletions with individual bases
+            else:
+                # Alter sequence to include "-" to signify deletion
+                sequence = sequence[:d[0]] + ['-'] * d[1] + sequence[d[0]:]
+                # Alter quality to mean of flank
+                dQual = (quality[d[0] - 1] + quality[d[0]]) / 2
+                quality = quality[:d[0]] + [dQual] * d[1] + quality[d[0]:]
+                # Alter positions
+                dPos = range(positions[d[0] - 1] + 1,
+                    positions[d[0] - 1] + d[1] + 1)
+                positions = positions[:d[0]] + dPos + positions[d[0]:]
     # Create and return output
     if len(sequence) == len(quality) and len(quality) == len(positions):
         positionDict = dict(zip(positions, zip(sequence, quality)))
         return(positionDict)
     else:
         raise IOError('Could not ascribe sequence to positions')
-    # Return data
 
 def extractPosition(
-       openBam, chrom, position, minMapQ = 20, minBaseQ = 20
+       openBam, chrom, position, minMapQ = 20, minBaseQ = 20, groupdel = False
     ):
     # check arguments
     toolbox.checkArg(chrom, 'str')
     toolbox.checkArg(position, 'int', mn = 1)
     toolbox.checkArg(minMapQ, 'int', mn = 0)
     toolbox.checkArg(minBaseQ, 'int', mn = 0)
-    toolbox.checkArg(groupDeletions,  'bool')
+    toolbox.checkArg(groupdel, 'bool')
     # Set variables for mapping
     mapQuality = []
     baseCounts = {}
@@ -170,15 +241,10 @@ def extractPosition(
     for read in openBam.fetch(chrom, position-1, position):
         # Store mapping quality and skip reads with low values
         mapQuality.append(read.mapping_quality)
-        if mapQuality[:-1] < minMapQ:
+        if mapQuality[-1] < minMapQ:
             continue
         # Extract base calls for read
-        baseDict = baseCalls(
-            sequence = list(read.query_alignment_sequence),
-            quality = list(read.query_alignment_qualities),
-            positions = list(read.get_reference_positions()),
-            cigartuple = read.cigartuples
-        )
+        baseDict = baseCalls(read, groupdel)
         # Extract reads for base of interest or skip
         try:
             base, quality = baseDict[position - 1]
@@ -202,8 +268,9 @@ def extractPosition(
         meanMap = 0
     return(baseCounts, meanMap)
 
-def extractVariantCounts(
-        variantList, bamFile, minMapQ = 20, minBaseQ = 20
+def extractVariantCountsProcess(
+        variantList, bamFile, pipe, minMapQ = 20, minBaseQ = 20,
+        groupdel = False
     ):
     ''' Function calculates the frequency at which specified nucleotides
     are found at specific chromosomal regions. Function takes 6 arguments:
@@ -224,10 +291,15 @@ def extractVariantCounts(
     5)  mapqual - Mean mapping score of ALL reads spanning the postion.
     
     '''
+    # check arguments
+    toolbox.checkArg(minMapQ, 'int', mn = 0)
+    toolbox.checkArg(minBaseQ, 'int', mn = 0)
+    toolbox.checkArg(groupdel, 'bool')
     # Create output dataframe
     variantNames = [':'.join(map(str, x)) for x in variantList]
     outData = pd.DataFrame(
-        columns = ['varcount', 'refcount', 'varfor', 'reffor', 'mapqual'],
+        columns = ['allcount', 'allfor', 'refcount', 'reffor', 'varcount',
+            'varfor', 'mapqual'],
         index = variantNames
     )
     # Open bamFile
@@ -237,36 +309,36 @@ def extractVariantCounts(
         variantList):
         # Extract base data
         baseCounts, mapqual = extractPosition(
-            openBam = bam,
-            chrom = chrom,
-            position = position,
-            minMapQ = minMapQ,
-            minBaseQ = minBaseQ
+            openBam = bam, chrom = chrom, position = position,
+            minMapQ = minMapQ, minBaseQ = minBaseQ, groupdel = groupdel
         )
         # Count total bases
-        allCount = sum([x[0] for x in baseCounts.values()])
+        allcount = sum([x[0] for x in baseCounts.values()])
+        allfor = sum([x[1] for x in baseCounts.values()])
         # Extract reference counts
         if reference in baseCounts:
-            refcount, forcount = baseCounts[reference]
-            reffor = round(forcount / float(allCount), 4)
+            refcount, reffor = baseCounts[reference]
         else:
             refcount = 0
             reffor = 0
-        # Extract frequency
+        # Extract variant frequency
         if variant in baseCounts:
-            varcount, forcount = baseCounts[variant]
-            varfor = round(forCount / float(allCount), 4)
+            varcount, varfor = baseCounts[variant]
         else:
-            varCount = 0
-            forFreq = 0
+            varcount = 0
+            varfor = 0
         # Add data to output list
-        outData.loc[name] = [varcount, refcount, varfor, reffor mapqual]
-    # Close bam and return results
+        outData.loc[name] = [allcount, allfor, refcount, reffor, varcount,
+            varfor, mapqual]
+    # Close bam
     bam.close()
-    return(outData)
+    # Send data down pipe and close
+    pipe.send(outData)
+    pipe.close()
 
 def calculateVariantMetrics(
-        variantList, bamList, sampleNames, minMapQ = 20, minBaseQ = 20
+        variantList, bamList, sampleNames, annovarPath, buildver, database,
+        tempprefix, minMapQ = 20, minBaseQ = 20, groupdel = False 
     ):
     ''' Function calculates the frequency at which specified nucleotides
     are found at specific chromosomal regions. Function takes 6 arguments:
@@ -280,6 +352,7 @@ def calculateVariantMetrics(
         BAM files
     4)  minMapQ - Minimum mapping quality of read to extract base.
     5)  MinBaseQ - Minimum base quality to extract base.
+    6)  groupdel - Boolean, whether to group deletions to 5' base.
     
     Function returns a list of tuples where each tuple contains the following
     four elements:
@@ -292,40 +365,95 @@ def calculateVariantMetrics(
         qualities below the desired threshold.
     
     '''
+    # Check arguments
+    toolbox.checkArg(minMapQ, 'int', mn = 0)
+    toolbox.checkArg(minBaseQ, 'int', mn = 0)
+    toolbox.checkArg(groupdel, 'bool')
     # Check supplied Names
     if not isinstance(sampleNames, (list, tuple)):
         raise IOError('sampleNasmes must be a list or a tuple')
     if len(sampleNames) != len(bamList):
         raise IOError('Must be a sample name for each BAM')
-    # Extract variants for each BAM
-    outputData = pd.DataFrame()
-    for number, (name, bam) in enumerate(zip(sampleNames, bamList)):
-        # Extract sample data
-        sampleData = extractVariantCounts(
-            variantList = variantList,
-            bamFile = bam,
-            minMapQ = minMapQ,
-            minBaseQ = minBaseQ
+    # Create output dataframe
+    varnames = [':'.join(map(str,x)) for x in variantList]
+    outputData = pd.DataFrame(index = varnames, columns = ['chr','pos','ref',
+        'var','minp'])
+    for x in varnames:
+        chrom, position, ref, var = x.split(':')
+        outputData.loc[x] = [chrom, int(position), ref, var, 1]
+    # Create variables to store pipe and process data
+    pipeList = []
+    processList = []
+    # Create process for each BAM
+    for bamFile in bamList:
+        # Create pipes
+        pipeRecv, pipeSend = multiprocessing.Pipe(False)
+        pipeList.append(pipeRecv)
+        # Create and start process
+        proc = multiprocessing.Process(
+            target = extractVariantCountsProcess,
+            args = (variantList, bamFile, pipeSend, minMapQ, minBaseQ,
+                groupdel)
         )
-        # Calculate adjusted p-values
+        proc.start()
+        processList.append(proc)
+        # Close send pipe
+        pipeSend.close()
+    # Extract variants for each BAM
+    for number, (name, pipe, process) in enumerate(
+            zip(sampleNames, pipeList, processList)
+        ):
+        # Extract data from pipe and close pipe and process
+        sampleData = pipe.recv()
+        pipe.close()
+        process.join()
+        # select desired data
+        selectSample = pd.DataFrame(index = varnames)
+        selectSample['cov'] = sampleData['allcount']
+        selectSample['freq'] = sampleData['varcount'] / sampleData['allcount']
+        selectSample['mapq'] = sampleData['mapqual']
+        # Calculate pvalue
         if number:
-            # Extract data
-            testVar = sampleData['varcount']
-            testRef = sampleData['refcount']
-            # Calculate p-value
             pvalue = []
-            for x in zip(zip(refVar, refRef), zip(testVar, testRef)):
+            for x in zip(
+                zip(refVar, refNonVar), 
+                zip(
+                    sampleData['varcount'],
+                    sampleData['allcount'] - sampleData['varcount']
+                )
+            ):
                 pvalue.append(fisher_exact(x)[1])
-            sampleData['pvalue'] = pvalue
-            # Calculate FDR
-            sampleData['padj'] = multipletests(pvalue, method = 'fdr_bh')[1]
+            selectSample['pvalue'] = pvalue
         # Extract count for reference
         else:
             refVar = sampleData['varcount']
-            refRef = sampleData['refcount']
+            refNonVar = sampleData['allcount'] - sampleData['varcount']
         # Rename tables columns and append to output
-        sampleData.columns = [name + '_' + x for x in sampleData.columns]
-        outputData = pd.concat([outputData, sampleData], axis = 1)
+        selectSample.columns = [name + '_' + x for x in selectSample.columns]
+        outputData = pd.concat([outputData, selectSample], axis = 1)
+    # Calculate minium pvalue and sort
+    pvalueIndex = [x.endswith('pvalue') for x in outputData.columns]
+    minp = outputData.loc[:,pvalueIndex].min(1)
+    outputData['minp'] = minp
+    # Add annovar annotation and concat to dataframe
+    geneAnno = annovar.geneAnno2DF(variantList = variantList,
+        path = annovarPath, buildver = buildver, database = database,
+        tempprefix = tempprefix)
+    outputData = pd.concat([outputData, geneAnno], axis = 1)
+    outputData.sort_values('minp', inplace = True)
     # Return data
     return(outputData)
 
+#data = calculateVariantMetrics(
+#    variantList = [('13',93096846,'A','C'),('7',59673519,'T','A')],
+#    bamList = [
+#        '/farm/scratch/rs-bio-lif/rabino01/Elza/bamFiles/328909-NORM_dedup_realign_recal.bam',
+#        '/farm/scratch/rs-bio-lif/rabino01/Elza/bamFiles/328909-T1R2_dedup_realign_recal.bam'
+#    ],
+#    sampleNames = ['NORM', 'T1R2'],
+#    annovarPath = '/farm/babs/redhat6/software/annovar_2015Jun17/annotate_variation.pl',
+#    buildver = 'mm10',
+#    database = '/farm/babs/redhat6/software/annovar_2015Jun17/mousedb/',
+#    tempprefix = '/farm/scratch/rs-bio-lif/rabino01/Elza/annotemp'
+#)
+#print data
