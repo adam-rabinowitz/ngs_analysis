@@ -43,6 +43,8 @@ else:
 for number, directory in enumerate(dirDict):
     if number:
         if subDir != dirDict[directory]:
+            print subDir
+            print dirDict[directory]
             raise IOError('Sub-directories are not identical')
     else:
         subDir = dirDict[directory]
