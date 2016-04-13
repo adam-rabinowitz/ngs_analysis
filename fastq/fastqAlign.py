@@ -4,9 +4,10 @@ from ngs_python.bam import samtools
 from general_python import toolbox
 
 def bowtie2Align(
-        index, outSam, read1, read2 = None, path = 'bowtie2',
+        index, outFile, read1, read2 = None, bowtie2Path = 'bowtie2',
         threads = 1, discordant = False, mixed = False, upto = None,
-        check = True
+        maxInsert = None, check = True, samtoolsPath = 'samtools',
+        memory = '2', nameSort = False
     ):
     ''' Function to generate command to peform Bowtie2 Alignment of
     paired FASTQ files. Function takes 9 arguments:
@@ -23,7 +24,7 @@ def bowtie2Align(
     10) check - Boolean; whether to check for index entensions.
     
     '''
-    # Check for index etensions
+    # Check for index extensions
     toolbox.checkArg(check, 'bool')
     if check:
         suffixes = ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
@@ -45,13 +46,24 @@ def bowtie2Align(
         mixed = '--no-mixed'
     # Check upto argument
     toolbox.checkArg(upto, 'int', mn=1)
+    # Check maximum insert argument
+    toolbox.checkArg(maxInsert, 'int', mn = 1)
+    # Check outut file name and generate intermediate file names
+    if outFile.endswith('.sam'):
+        outSam = outFile
+        outBam = ''
+    elif outFile.endswith('.bam'):
+        outBam = outFile
+        outSam = outFile[:-4] + '.sam'
+    else:
+        raise ValueError("'ouFile' argument must end '.sam' or '.bam'")
     # Join multiple fastq files
     if isinstance(read1, list):
         read1 = ','.join(read1)
     if isinstance(read2, list):
         read2 = ','.join(read2)
     # Create initial command
-    bowtie2Command = [path, '--phred33', '--very-sensitive', mixed, discordant, '-p',
+    bowtie2Command = [bowtie2Path, '--phred33', '--very-sensitive', mixed, discordant, '-p',
         str(threads), '-x', index, '-S', outSam]
     # Extend command depending on if read2 is applied
     if read2:
@@ -61,10 +73,21 @@ def bowtie2Align(
     # Supplement additional commands
     if upto:
         bowtie2Command.extend(['-u', str(upto)])
-    # Concatenate and return command
+    if maxInsert:
+        bowtie2Command.extend(['-X', str(maxInsert)])
+    # Concatenate bowtie2Command command
     bowtie2Command = filter(None, bowtie2Command)
     bowtie2Command = ' '.join(bowtie2Command)
-    return(bowtie2Command)
+    # Supplement BWA command with sort command
+    if outBam:
+        sortCommand = samtools.sort(inFile = outSam, outFile = outBam,
+            name = nameSort, memory = memory, delete = True,
+            path = samtoolsPath, threads = threads)
+        completeCommand = bowtie2Command + ' && ' + sortCommand
+    else:
+        completeCommand = bowtie2Command
+    # Return complete command
+    return(completeCommand)
 
 def bwaMemAlign(
         index, outFile, read1, read2 = None, bwaPath = 'bwa', threads = 1,
