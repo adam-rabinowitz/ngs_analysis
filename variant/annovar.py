@@ -1,7 +1,10 @@
 from ngs_python.variant import varscan
+import pandas as pd
+import os
+import subprocess
 
 def geneAnno(
-        inFile, outPrefix, annovar, buildver, database
+        inFile, outPrefix, path, buildver, database
     ):
     '''
     Function perform gene annovar gene annotation on a valid
@@ -9,40 +12,66 @@ def geneAnno(
     
     '''
     # Build command
-    command = [annovar, '-geneanno', '-buildver', buildver, '-outfile',
+    command = [path, '-geneanno', '-buildver', buildver, '-outfile',
         outPrefix, inFile, database]
+    print command
     # Join and return command
     command = ' '.join(command)
     return(command)
 
-def nonSynonomous(
-        inFile, outFile, annovar, buildver, database, delete = True
+def geneAnno2DF(
+        variantList, path, buildver, database, tempprefix
     ):
-    # Create file names
-    varFile = outFile + '.variant_function'
-    exonVarFile = outFile + '.exonic_variant_function'
-    logFile = outFile + '.log'
-    invalid = outFile + '.invalid_input'
-    # Create annovar command
-    annovarCommand = geneAnno(inFile = inFile, outPrefix = outFile,
-        annovar = annovar, buildver = buildver, database = database)
-    # Filter annovar command
-    filterCommand = 'awk \'BEGIN{FS="\\t"; OFS="\\t"};{if ($2 ~ '\
-        '/^nonsynonymous/) print $9, $3}\' %s > %s' %(
-            exonVarFile, outFile)
-    # Join commands
-    combinedCommand = '%s && %s' %(annovarCommand, filterCommand)
-    # Add deletion command if required and return
-    if delete:
-        combinedCommand += ' && rm %s %s %s %s' %(varFile, exonVarFile,
-            logFile, invalid)
-    return(combinedCommand)
+    # Create temporary file names
+    annoIn = tempprefix + '.av'
+    varFunc = tempprefix + '.variant_function'
+    exonVarFunc = tempprefix + '.exonic_variant_function'
+    annoLog = tempprefix + '.log'
+    invalidIn = tempprefix + ''
+    # Create gene annotation input
+    with open(annoIn, 'w') as outFile:
+        for chrom, start, reference, variant in variantList:
+            # Create variant name
+            variantName = '%s:%s:%s:%s' %(
+                chrom, start, reference, variant
+            )
+            # Process deletions
+            if "-" in variant:
+                # Set end and reference values
+                end = start + (len(variant) - 1)
+                reference = '0'
+                variant = '-'
+            else:
+                end = start
+            # Write variant data to output file
+            outFile.write("%s\t%s\t%s\t%s\t%s\t%s\n" %(chrom, start, end,
+                reference, variant, variantName))
+    # Perform annotation
+    annoCommand = geneAnno(inFile = annoIn, outPrefix = tempprefix,
+        path = path, buildver = buildver, database = database)
+    subprocess.check_call(annoCommand, shell = True)
+    # Read in annovar output files
+    vf = pd.read_csv(varFunc, sep = "\t", index_col = -1, header = None)
+    vf.columns = ['class', 'genes', 'chrom', 'start', 'end', 'ref', 'var']
+    evf = pd.read_csv(exonVarFunc, sep = "\t", index_col = -1, header = None)
+    evf.columns = ['line', 'affect', 'change', 'chrom', 'start', 'end', 'ref',
+        'var']
+    outDF = pd.concat(
+        [vf[['class','genes']], evf[['affect','change']]],
+        axis = 1
+    )
+    # Delete temporary files
+    for f in [annoIn, varFunc, exonVarFunc, annoLog]:
+        if os.path.isfile(f):
+            os.remove(f)
+    # Return annovar output
+    return(outDF)
 
-print nonSynonomous(
-    inFile = '/farm/scratch/rs-bio-lif/rabino01/Elza/310123-T1R1.filter.somatic.av',
-    outFile = '/farm/scratch/rs-bio-lif/rabino01/Elza/310123-T1R1.filter.somatic.nonsyn',
-    annovar = '/farm/babs/redhat6/software/annovar_2015Jun17/annotate_variation.pl',
-    buildver = 'mm10',
-    database = '/farm/babs/redhat6/software/annovar_2015Jun17/mousedb/',
-    delete = True
-)
+#data = geneAnno2DF(
+#    variantList = [('1',83276021,'T','C'),('1',9545985,'A','G')],
+#    annovar = '/farm/babs/redhat6/software/annovar_2015Jun17/annotate_variation.pl',
+#    buildver = 'mm10',
+#    database = '/farm/babs/redhat6/software/annovar_2015Jun17/mousedb/',
+#    tempprefix = '/farm/scratch/rs-bio-lif/rabino01/Elza/annotemp'
+#)
+#print data
