@@ -5,7 +5,8 @@ from general_python import toolbox
 
 def bowtie2Align(
         index, outFile, read1, read2 = None, bowtie2Path = 'bowtie2',
-        threads = 1, discordant = False, mixed = False, upto = None,
+        threads = 1, readGroup = 1, sampleName = None, libraryID = None,
+        platform = None, discordant = False, mixed = False, upto = None,
         maxInsert = None, check = True, samtoolsPath = 'samtools',
         memory = '2', nameSort = False
     ):
@@ -75,6 +76,18 @@ def bowtie2Align(
         bowtie2Command.extend(['-u', str(upto)])
     if maxInsert:
         bowtie2Command.extend(['-X', str(maxInsert)])
+    # Add read group data
+    if readGroup:
+        # Create read group list
+        rgList = ['--rg-id', readGroup]
+        if sampleName:
+            rgList.extend(['--rg', 'SM:' + str(sampleName)])
+        if libraryID:
+            rgList.extend(['--rg', 'LB:' + str(libraryID)])
+        if platform:
+            rgList.extend(['--rg', 'PL:' + str(platform)])
+        # Add list to command
+        bowtie2Command.extend(rgList)
     # Concatenate bowtie2Command command
     bowtie2Command = filter(None, bowtie2Command)
     bowtie2Command = ' '.join(bowtie2Command)
