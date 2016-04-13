@@ -130,65 +130,55 @@ def filterSomatic(
     command = ' '.join(command)
     return command
 
-def varscan2annovar(
-        inFile, outFile
+def variantSet(
+        varscanFile, somatic = False
     ):
     '''
     Function to convert an varscan putput file to an annovar input file
     
     '''
+    # Create output list
+    varSet = set()
     # Open input file and skip header
-    inputFile = open(inFile, 'r')
-    inputHeader = inputFile.next()
-    # Open output temporary file to store annovar input
-    outputFile = open(outFile, 'w')
-    # Loop through file and save data as av input
-    for line in inputFile:
-        # extract line data
-        lineData = line.strip().split('\t')
-        chrom, position, reference, variants = lineData[:4]
-        # Loop through potential variants
-        for var in variants.split('/'):
-            # Process SNV
-            if len(var) == 1:
-                # Create variant name
-                variantName = '%s:%s:%s:%s' %(
-                    chrom, position, reference, var
-                )
-                # Write variant data to output file
-                outputFile.write("%s\t%s\t%s\t%s\t%s\t%s\n" %(
-                    chrom, position, position, reference, var, variantName
-                ))
-            # Process deletions
-            elif "-" in var:
-                # Modify positional and variant values
-                start = int(position) + 1
-                end = start + (len(var) - 2)
-                var = reference + ("-" * (len(var) - 1))
-                # Create variant name
-                variantName = '%s:%s:%s:%s' %(
-                    chrom, position, reference, var
-                )
-                # Write variant data to output file
-                outputFile.write("%s\t%s\t%s\t%s\t%s\t%s\n" %(
-                    chrom, start, end, 0, var[1:], variantName
-                ))
-            # Process insertions
-            else:
-                # Modify variant value
-                var = reference + var[1:]
-                # Create variant name
-                variantName = '%s:%s:%s:%s' %(
-                    chrom, position, reference, var
-                )
-                # Write variant data to output file
-                outputFile.write("%s\t%s\t%s\t%s\t%s\t%s\n" %(
-                    chrom, position, position, reference, '+' + var[1:],
-                    variantName
-                ))
-    # Close input and output files
-    inputFile.close()
-    outputFile.close()
+    with open(varscanFile, 'r') as inputFile:
+        # Process header
+        inputHeader = inputFile.next().strip().split('\t')
+        somaticIndex = inputHeader.index('somatic_status')
+        # Loop through file and save data as av input
+        for line in inputFile:
+            # extract line data
+            lineData = line.strip().split('\t')
+            # Handle somatic status
+            if somatic and lineData[somaticIndex] != 'Somatic':
+                continue
+            # Extract data
+            chrom, position, reference, variants = lineData[:4]
+            position = int(position)
+            # Loop through potential variants
+            for var in variants.split('/'):
+                # Process SNV
+                if len(var) == 1:
+                    # Store variant data
+                    varSet.add((chrom, position, reference, var))
+                # Process deletions
+                elif "-" in var:
+                    # Modify positional, reference and variant values
+                    adjpos = position + 1
+                    adjref = var[1]
+                    adjvar = "-" * (len(var) - 1)
+                    # Store variant data
+                    varSet.add((chrom, adjpos, adjref, adjvar))
+                # Process insertions
+                elif '+' in var:
+                    # Modify variant values
+                    adjvar = reference + var[1:]
+                    # Store variant data
+                    varSet.add((chrom, position, reference, adjvar))
+                # Raise error for unrecognised variant
+                else:
+                    raise IOError('Variant %s could not be parsed' %(var))
+    # Close input and return variant list
+    return(varSet)
 
 #varscan2annovar(
 #    inFile = '/farm/scratch/rs-bio-lif/rabino01/Elza/varscan/310123-T1R1.filter.somatic.snp',
