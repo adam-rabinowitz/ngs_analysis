@@ -15,7 +15,7 @@ def sortBed(inBed, outBed, path = 'bedtools', delete = True):
     # Create sort command:
     sortCommand = '%s sort -i %s > %s' %(path, inBed, outBed)
     # Append deletion command
-    if remove = True:
+    if delete == True:
         sortCommand += ' && rm %s' %(inBed)
     # Return command
     return(sortCommand)
@@ -37,7 +37,7 @@ def bed2bedGraph(inBed, outBG, chrFile, path = 'bedtools', delete = False):
     bgCommand = '%s genomecov -bg -i %s -g %s > %s' %(path, inBed, chrFile,
         outBG)
     # Append deletion command
-    if remove = True:
+    if delete == True:
         bgCommand += ' && rm %s' %(inBed)
     # Return command
     return(bgCommand)
