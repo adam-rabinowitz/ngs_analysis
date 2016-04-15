@@ -52,3 +52,29 @@ def markDuplicates(
         duplicateCommand += ' && rm %s.ba?*' %(inBam[:-4])
     # Return command
     return(duplicateCommand)
+    
+def collectInsertSizeMetrics(
+        inBam, outPrefix, picardPath, javaPath = 'java'
+    ):
+    ''' Function to calculate insert size metrics using picard toolkit.
+    Function takes 4 arguments:
+    
+    1)  inBam - Name of input BAM
+    2)  outPrefix - Prefix of output files. A '.txt' and '.pdf' file with
+        this prefix will be created
+    3)  picardPath - Path to Picard.jar file.
+    4)  javaPath - Path to java executable.
+    
+    '''
+    # Build and return command
+    indexCommand = '%s -jar %s CollectInsertSizeMetrics I=%s O=%s H=%s' %(
+        javaPath, picardPath, inBam, outPrefix + '.txt', outPrefix + '.pdf')
+    return(indexCommand)
+
+test = collectInsertSizeMetrics(
+    inBam = '/farm/scratch/rs-bio-lif/rabino01/Ascl1/ATACseq/bamFiles/SR_8.bam',
+    outPrefix = '/farm/scratch/rs-bio-lif/rabino01/Ascl1/ATACseq/bamFiles/SR_8.insert',
+    javaPath = '/farm/babs/redhat6/software/jdk1.7.0_40/bin/java',
+    picardPath = '/farm/babs/redhat6/software/picard-tools-1.140/picard.jar'
+)
+print test
