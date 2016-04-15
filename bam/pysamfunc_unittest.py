@@ -91,17 +91,19 @@ class startIntervalTest(unittest.TestCase):
         read.reference_start = 100
         read.query_sequence = 'AGCTAGCTAGCT'
         read.cigartuples = [(0,12)]
-        read.is_reverse = False
+        read.flag = 131
         read.reference_id = 0
+        read.mapping_quality = 32
+        read.query_name = 'test1'
         chrDict = {0:('chr1',200)}
         # Create expected result and compare
         intervalSize = 10
-        expTuple = ('chr1', 95, 105)
+        expTuple = ('chr1', 95, 105, 'test1/2', 32, '+')
         actTuple = pysamfunc.startInterval(read, intervalSize, chrDict)
         self.assertTrue(actTuple == expTuple)
         # Create expected result and compare
         intervalSize = 50
-        expTuple = ('chr1', 75, 125)
+        expTuple = ('chr1', 75, 125, 'test1/2', 32, '+')
         actTuple = pysamfunc.startInterval(read, intervalSize, chrDict)
         self.assertTrue(actTuple == expTuple)
     
@@ -111,17 +113,19 @@ class startIntervalTest(unittest.TestCase):
         read.reference_start = 100
         read.query_sequence = 'AGCTAGCTAGCT'
         read.cigartuples = [(0,12)]
-        read.is_reverse = True
+        read.flag = 83
         read.reference_id = 0
+        read.mapping_quality = 20
+        read.query_name = 'test2'
         chrDict = {0:('chr1',200)}
         # Create expected result and compare
         intervalSize = 10
-        expTuple = ('chr1', 107, 117)
+        expTuple = ('chr1', 107, 117, 'test2/1', 20, '-')
         actTuple = pysamfunc.startInterval(read, intervalSize, chrDict)
         self.assertTrue(actTuple == expTuple)
         # Create expected result and compare
         intervalSize = 50
-        expTuple = ('chr1', 87, 137)
+        expTuple = ('chr1', 87, 137, 'test2/1', 20, '-')
         actTuple = pysamfunc.startInterval(read, intervalSize, chrDict)
         self.assertTrue(actTuple == expTuple)
 
@@ -131,12 +135,14 @@ class startIntervalTest(unittest.TestCase):
         read.reference_start = 10
         read.query_sequence = 'AGCTAGCTAG'
         read.cigartuples = [(0,10)]
-        read.is_reverse = False
+        read.flag = 3
         read.reference_id = 0
+        read.mapping_quality = 28
+        read.query_name = 'test3'
         chrDict = {0:('chr1',20)}
         intervalSize = 30
         # Create expected result and compare
-        expTuple = ('chr1', 0, 20)
+        expTuple = ('chr1', 0, 20, 'test3', 28, '+')
         actTuple = pysamfunc.startInterval(read, intervalSize, chrDict)
         self.assertTrue(actTuple == expTuple)
 
