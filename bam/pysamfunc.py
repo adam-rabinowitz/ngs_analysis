@@ -69,13 +69,18 @@ def startInterval(read, intervalSize, chrDict):
         name and length.
     
     Function returns a tuple of the region in BED format; using zero
-    based indexing and open ended interval.
+    based indexing and open ended interval and where name is read name
+    and score is read mapping quality.
     
     '''
-    # Find site of read start
-    if read.flag & 16:
+    # Extract flag
+    flag = read.flag
+    # Find strand of read and extract read start position
+    if flag & 16:
+        strand = '-'
         site = read.reference_end
     else:
+        strand = '+'
         site = read.reference_start
     # Calculate start and end of interval
     halfSize = int(intervalSize / 2)
@@ -85,8 +90,17 @@ def startInterval(read, intervalSize, chrDict):
     chrom, length = chrDict[read.reference_id]
     start = max(0, start)
     end = min(length, end)
+    # Extract mapping quality
+    mapq = read.mapping_quality
+    # Extract read name
+    if flag & 64:
+        name = read.query_name + '/1'
+    elif flag & 128:
+        name = read.query_name + '/2'
+    else:
+        name = read.query_name
     # Return data
-    return((chrom, start, end))
+    return((chrom, start, end, name, mapq, strand))
 
 def pairGenerator(bamFile, mapQ = 20):
     ''' Function extracts read pairs from  name sorted BAM files.
