@@ -3,7 +3,7 @@
 Usage:
     
     atacBam2Bed.py <bamfile> <outbed> [--minMapQ=<minMapQ>] [--size=<size>]
-        [--rmDup=<rmDup>]
+        [--rmDup]
     
     atacBam2Bed.py (-h | --help)
     
@@ -11,7 +11,7 @@ Options:
     
     --minMapQ=<minMapQ>  Minimum mapping quality of reads [default: 20]
     --size=<size>        Size of open region around insertion [default: 50]
-    --rmDup=<rmDup>      Flag to remove duplicate reads
+    --rmDup              Flag to remove duplicate reads
     --help               Output this message
     
 """
@@ -42,22 +42,31 @@ inBam = pysam.AlignmentFile(args['<bamfile>'])
 chrDict = pysamfunc.createChrDict(inBam)
 # Loop through BAM file and create BED file
 for read in inBam:
-    # Count total
+    # Count total and extract flag
     counter['total'] += 1
+    flag = read.flag
     # Count and skip duplicates
-    if args['--rmDup'] and read.flag & 1024:
+    if args['--rmDup'] and flag & 1024:
         counter['duplicate'] += 1
+        continue
+    # Count and skip secondary alignments
+    if flag & 256:
+        counter['secondary'] += 1
+        continue
+    # Count and skip unmapped reads
+    if flag & 4:
+        counter['unmapped'] += 1
+        continue
+    # Count and skip reads with unmapped mate
+    if flag & 8:
+        counter['nomate'] += 1
         continue
     # Count and skip poorly mapped reads
     if read.mapping_quality < args['--minMapQ']:
         counter['poormap'] += 1
         continue
-    # Count and skip reads with unmapped mate
-    if read.flag & 8:
-        counter['nomate'] += 1
-        continue
     # Count and skip reads with clipping at read start
-    if read.flag & 16:
+    if flag & 16:
         if read.cigartuples[-1][0] in [4, 5]:
             counter['clipped'] += 1
             continue
@@ -65,9 +74,11 @@ for read in inBam:
         if read.cigartuples[0][0] in [4, 5]:
             counter['clipped'] += 1
             continue
-    # Count and create accepted reads
+    # Count accepted reads
     counter['accepted'] += 1
+    # Extract bed data from read
     regionTuple = pysamfunc.startInterval(read, args['--size'], chrDict)
+    # Save regions to file
     regionTuple = '\t'.join(map(str, regionTuple))
     outBed.write('%s\n' %(regionTuple))
 # Close files
@@ -76,7 +87,9 @@ inBam.close()
 # Print metric
 print 'Total reads: %s' %(counter['total'])
 print 'Duplicates: %s' %(counter['duplicate'])
-print 'Poorly mapped: %s' %(counter['poormap'])
+print 'Secondary: %s' %(counter['secondary'])
+print 'Unmapped: %s' %(counter['unmapped'])
 print 'Mate unmapped: %s' %(counter['nomate'])
+print 'Poorly mapped: %s' %(counter['poormap'])
 print 'Start clipped: %s' %(counter['clipped'])
 print 'Accepted: %s' %(counter['accepted'])
