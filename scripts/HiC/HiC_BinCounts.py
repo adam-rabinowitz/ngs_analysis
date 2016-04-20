@@ -18,13 +18,12 @@ Options:
     --help               Output this message
     
 """
-
 # Import required modules
 import os
 import re
 import numpy as np
 from ngs_python.structure import interactionMatrix, analyseInteraction
-from general_python import docopt
+from general_python import docopt, toolbox
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')
 # Check numerical arguments
@@ -34,16 +33,16 @@ if args['nobed']:
     args['<binsize>'] = int(args['<binsize>'])
 # Check input files and output directory
 if args['bed']:
-    if not os.path.isfile(args['<bedfile>']):
-        raise IOError('Bed file %s not found' %(args['<bedfile>']))
+    toolbox.checkArg(args['<bedfile>'], 'file')
 else:
-    if not os.path.isfile(args['<chrfile>']):
-        raise IOError('Chromosome file %s not found' %(args['<chrFile>']))
+    toolbox.checkArg(args['<chrfile>'], 'file')
 for f in args['<inputfiles>']:
-    if not os.path.isfile(f):
-        raise IOError('Input file %s not foundi' %(f))
-if not os.path.isdir(args['<outdir>']):
-    raise IOError('Output directory %s not found' %(args['<outdir>']))
+    toolbox.checkArg(f, 'file')
+toolbox.checkArg(args['<outdir>'], 'dir')
+# Modify label argument
+if args['--label']:
+    toolbox.checkArg(args['--label'], 'str')
+    args['--label'] = '_' + args['--label']
 # Extract and print sample names
 sampleNames = [re.search('([^/]*)\.fragLigations\.gz$',f).group(1) for f in args['<inputfiles>']]
 logData = 'Samples:\n  %s\n' %(
@@ -73,16 +72,16 @@ for f in args['<inputfiles>']:
     sampleName = re.search('([^/]*)\.fragLigations.gz$',f).group(1)
     # Create output file prefix
     if args['--label']:
-        prefix = args['<outdir>'] + sampleName + '_' + args['--label']
+        prefix = os.path.join(args['<outdir>'], sampleName + args['--label'])
     else:
-        prefix = args['<outdir>'] + sampleName
+        prefix = os.path.join(args['<outdir>'], sampleName
     prefixList.append(prefix)
     # Create interaction matrix and save to file
     countMatrix, logArray = genomeBins.generateMatrix(
         f, args['--threads'])
     np.savetxt(prefix + '.countMatrix.gz', countMatrix, '%s', '\t',
         header = '\t'.join(genomeBins.binNames), comments = '')
-    # Store Interaction Data
+    # Print interaction data
     logData += '\n%s:\n  Interaction Data:\n%s\n%s\n%s\n%s\n' %(
         sampleName,
         '    total: %s' %(logArray[0]),
