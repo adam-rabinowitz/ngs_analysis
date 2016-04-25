@@ -211,9 +211,8 @@ def rsemBowtie2Align(
     toolbox.checkArg(check, 'bool')
     if check:
         suffix = [
-            '.grp', '.ti', '.transcripts.fa', '.seq', '.chrlist',
-            '.idx.fa', '.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
-            '.rev.2.bt2'
+            '.grp', '.ti', '.transcripts.fa', '.seq', '.idx.fa', '.1.bt2',
+            '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2', '.rev.2.bt2'
         ]
         for s in suffix:
             if not os.path.isfile(index + s):
