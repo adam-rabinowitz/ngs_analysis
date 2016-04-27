@@ -2,18 +2,18 @@
 
 Usage:
     
-    generateNormalisedMatrix.py <mincount> <infiles>...
-        [--scope=<scope>] [--threads=<threads>]
+    generateNormalisedMatrix.py <regions> <mincount> <outdir> <infiles>...
+        [--path=<paths>] [--threads=<threads>] [--memory=<memory>]
+        [--iter=<iter>]
     
     generateNormalisedMatrix.py (-h | --help)
     
 Options:
     
+    --path=<path>        Path to ic_mes executable [default: ic_mes]
     --threads=<threads>  Number of threads [default: 1]
-    --scope=<scope>      Scope of normalisation. Either genome ('gen'),
-                         chromosome ('chr') or path to a tab delimited
-                         text file outlining chromosome, start, end and
-                         name of regions.
+    --memory=<memory>    Memory (MB) per thread [default: 2000]
+    --iter=<iter>        Iterations of ic_mes [default: 1000]
     --help               Output this message
     
 """
@@ -22,13 +22,19 @@ import os
 import re
 import gzip
 import numpy as np
-import pandas as pd
-from ngs_python.structure import interactionMatrix, analyseInteraction
+import multiprocessing
+from ngs_python.structure import interactionMatrix
 from general_python import docopt, toolbox
 # Extract arguments
 args = docopt.docopt(__doc__, version = '1.0')
+# Check numeric arguments
+args['--threads'] = int(args['--threads'])
+args['--memory'] = int(args['--memory'])
+args['--iter'] = int(args['--iter'])
 # Check bin names are identical
 for count, infile in enumerate(args['<infiles>']):
+    if not infile.endswith('countMatrix.gz'):
+        raise IOError("Input files must end '.countMatrix.gz'")
     # Open input files
     with gzip.open(infile, 'r') as openFile:
         header = openFile.next().strip().split('\t')
@@ -38,6 +44,7 @@ for count, infile in enumerate(args['<infiles>']):
             raise IOError('Input files must have identical headers')
     else:
         binNames = header
+print args['<infiles>']
 # Extract bin data
 splitBin = [re.split('[:-]',x) for x in binNames]
 binChr = np.array([x[0] for x in splitBin])
@@ -60,34 +67,67 @@ for chrom in np.unique(binChr):
     for i in xrange(len(binArray) - 1):
         if binArray[i + 1] <= binArray[i]:
             raise IOError('Count files contain unsorted/overlapping bins')
-# Extract sample names
-sampleNames = [os.path.basename(x)[:-15] for x in args['<infiles>']]
-# Find bins to exclude due to low counts
-excludeBins = np.zeros(len(binNames), dtype = 'bool')
-for infile in args['<infiles>']:
-    # Read in file
-    counts = np.loadtxt(infile, dtype = np.uint32, delimiter = '\t',
-        skiprows = 1)
-    # Extract sums and check for symettry
-    rowSums = counts.sum(axis=0)
-    colSums = counts.sum(axis=1)
-    if not np.all(rowSums == colSums):
-        raise IOError('Count files are not symetrical')
-    # Extract low bins and store
-    lowBins = rowSums < np.uint32(args['<mincount>'])
-    excludeBins = np.logical_or(excludeBins, lowBins)
-# Find indices of regions for normalisation
-regionDict = {}
-# Normalise 
-with open(args['--scope'], 'r') as infile:
+# Create dictionaries to store indices and matrix information
+indexDict ={}
+matrixList = []
+# Open region file and extract correpsonding bins
+with open(args['<regions>'], 'r') as infile:
     for line in infile:
         # Extract region data
-        chrom, start, end, name = line.strip().split('\t')
-        acceptableBins = (binChr == chrom) & (binStart >= np.uint32(start)) & (binEnd <= np.uint32(end))
+        chrom, start, end, rname = line.strip().split('\t')
+        acceptableBins = ((binChr == chrom) & (binStart >= np.uint32(start)) &
+            (binEnd <= np.uint32(end)))
         indices = np.where(acceptableBins)[0]
-        # Add indices to dictionary
-        if name in regionDict:
-            regionDict[name][indices] = np.concatenate(regionDict[name]['indices'], indices)
+        # Add indices to index dictionary
+        if rname in indexDict:
+            indexDict[rname] = np.concatenate(indexDict[rname], indices)
         else:
-            regionDict[name] = {'indices' : indices, 'name' : name}
-print regionDict
+            indexDict[rname] = indices
+# Check index dictionary and create entries in exclude dictionary
+for rname in indexDict:
+    # Extract and sort indices
+    indices = indexDict[rname]
+    indices.sort()
+    # Check for absent or duplicate indices
+    if len(indices) == 0:
+        raise IOError('Region %s has no corresponding bins' %(rname))
+    if len(set(indices)) != len(indices):
+        raise IOError('Region %s has overlapping segments' %(rname))
+    # Update dictionary
+    indexDict[rname] = indices
+# Read in input files, save divided regions and extract counts
+for rname, indices in indexDict.items():
+    # Extract bin names and create list to store files
+    rbinNames = np.array(binNames)[indices]
+    rfileList = []
+    rbinExclude = np.zeros(len(indices), dtype = 'bool')
+    # Loop through files
+    for infile in args['<infiles>']:
+        # Extract name, create prefix
+        sampleName = os.path.basename(infile)[:-15]
+        outPrefix = os.path.join(args['<outdir>'],
+            sampleName + '.' + rname + '.' + str(args['<mincount>']))
+        # Read in file
+        counts = np.loadtxt(infile, dtype = np.uint32, delimiter = '\t',
+            skiprows = 1)
+        # Subdivide counts, save file and store name
+        regionCounts = counts[indices,:][:,indices]
+        countFileName = outPrefix + '.countMatrix.gz'
+        np.savetxt(countFileName, regionCounts, fmt = '%.0f', delimiter = '\t',
+            header = '\t'.join(rbinNames), comments = '')
+        rfileList.append(countFileName)
+        # Extract sums and check for symettry
+        rowSums = regionCounts.sum(axis=0)
+        colSums = regionCounts.sum(axis=1)
+        if not np.all(rowSums == colSums):
+            raise IOError('Count files are not symetrical')
+        # Extract low bins and store
+        lowBins = rowSums < np.uint32(args['<mincount>'])
+        rbinExclude = np.logical_or(rbinExclude, lowBins)
+    # Update matrix list with commands for normalisation
+    for rfile in rfileList:
+        matrixList.append((rfile, rbinExclude, args['--path'], args['--memory'],
+            args['--iter']))
+# Generate normalised matrices using multiprocessing pool
+pool = multiprocessing.Pool(args['--threads'])
+pool.map(interactionMatrix.normaliseMatrixProcess, matrixList)
