@@ -2,13 +2,14 @@
 
 Usage:
     
-    concatIlluminaFrags.py <indir> <outdir> [--unpaired]
+    concatIlluminaFrags.py <indir> <outdir> [--unpaired] [--traverse]
     
     concatIlluminaFrags.py (-h | --help)
     
 Options:
     
-    --unpaired  Do not check for paired reads
+    --unpaired  Do not check for paired reads.
+    --traverse  Look for FASTQ files within subdirectories.
     
 """
 
@@ -23,19 +24,39 @@ args = docopt.docopt(__doc__,version = 'v1')
 rePattern = re.compile('(.*?_L\\d{3}_R[12])_\\d{3}\\.fastq\\.gz$')
 # Create dictionary
 fastqDict = {}
-# Extract input files
-for infile in os.listdir(args['<indir>']):
-    # Match fastq files with regular expression
-    match = re.match(rePattern, infile)
-    if not match:
-        continue
-    # Add files to output dictionary
-    name = match.group(1)
-    path = os.path.join(args['<indir>'], infile)
-    if name in fastqDict:
-        fastqDict[name].append(path)
-    else:
-        fastqDict[name] = [path]
+# Extract input file from directory
+if not args['--traverse']:
+    for infile in os.listdir(args['<indir>']):
+        # Match fastq files with regular expression
+        match = re.match(rePattern, infile)
+        if not match:
+            continue
+        # Add files to output dictionary
+        name = match.group(1)
+        path = os.path.join(args['<indir>'], infile)
+        if name in fastqDict:
+            fastqDict[name].append(path)
+        else:
+            fastqDict[name] = [path]
+# Or extract input files from directory and sub-directories
+else:
+    for path, directories, files in os.walk(args['<indir>']):
+        # Loop through files
+        for infile in files:
+            # Match fastq files with regular expression
+            match = re.match(rePattern, infile)
+            if not match:
+                continue
+            # Add files to output dictionary
+            name = match.group(1)
+            path = os.path.join(path, infile)
+            if name in fastqDict:
+                fastqDict[name].append(path)
+            else:
+                fastqDict[name] = [path]
+keys = fastqDict.keys()
+keys.sort()
+print keys[:10]
 # Process samples
 for name in fastqDict.keys():
     # Process unpaired reads
@@ -80,7 +101,6 @@ for name in fastqDict.keys():
         # Create commands
         command1 = 'zcat %s | gzip > %s' %(' '.join(read1), outfile1)
         command2 = 'zcat %s | gzip > %s' %(' '.join(read2), outfile2)
-        moab.submitJob(command1)
-        moab.submitJob(command2)
-        print '%s paired files concatenated to prefix %s' %(len(read1), outfile1[:-10])
-        
+        #moab.submitJob(command1)
+        #moab.submitJob(command2)
+        #print '%s paired files concatenated to prefix %s' %(len(read1), outfile1[:-10])
