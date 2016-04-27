@@ -70,11 +70,3 @@ def collectInsertSizeMetrics(
     indexCommand = '%s -jar %s CollectInsertSizeMetrics I=%s O=%s H=%s' %(
         javaPath, picardPath, inBam, outPrefix + '.txt', outPrefix + '.pdf')
     return(indexCommand)
-
-test = collectInsertSizeMetrics(
-    inBam = '/farm/scratch/rs-bio-lif/rabino01/Ascl1/ATACseq/bamFiles/SR_8.bam',
-    outPrefix = '/farm/scratch/rs-bio-lif/rabino01/Ascl1/ATACseq/bamFiles/SR_8.insert',
-    javaPath = '/farm/babs/redhat6/software/jdk1.7.0_40/bin/java',
-    picardPath = '/farm/babs/redhat6/software/picard-tools-1.140/picard.jar'
-)
-print test
