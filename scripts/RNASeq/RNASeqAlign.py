@@ -41,6 +41,9 @@ print '%s\n' %(' '.join(sys.argv))
 args = docopt.docopt(__doc__,version = 'v1')
 # Extract sample prefix and name = args['<sampledata>'].split(',')
 args['prefix'], args['name'] = args['<sampledata>'].split(',')
+# Check supplied files
+toolbox.checkArg(args['<gtf>'], 'file')
+toolbox.checkArg(args['<rrna>'], 'file')
 # Extract fastq files and check
 if args['--singleend']:
     args['read1']  = fastqFind.findFastq(
@@ -84,7 +87,8 @@ for directory in dirList:
         os.mkdir(directory)
 # Extract path data and check
 paths = toolbox.fileDict(args['<paths>'], sep = '\t')
-toolbox.checkArg(paths['distance'], 'file')
+for program in paths:
+    toolbox.checkArg(paths[program], 'exc')
 # Generate object to store and submit commands
 moabJobs = moab.moabJobs()
 
@@ -177,7 +181,7 @@ rsemTranAlign = fastqAlign.rsemBowtie2Align(
     bowtie2Path = re.sub('[^/]*$', '', paths['bowtie2']),
     threads = args['--threads'],
     forProb = args['--forprob'],
-    genomeBam = True
+    genomeBam = False
 )
 rsemTranCommand = '%s && rm %s %s' %(
     rsemTranAlign,
@@ -258,20 +262,11 @@ else:
         read1 = args['trimRead1'],
         read2 = args['trimRead2'],
         index = args['<bwt2tranindex>'],
-        path = paths['bowtie2'],
-        outSam = args['tempSam'],
+        bowtie2Path = paths['bowtie2'],
+        samtoolsPath = paths['samtools'],
+        outFile = args['nsortBam'],
         threads = args['--threads'],
         upto = 1000000
-    )
-    # Create command to sort bam file
-    sortSampleCommand = samtools.sort(
-        inFile = args['tempSam'],
-        outFile = args['nsortBam'],
-        name = True,
-        threads = args['--threads'],
-        memory = 2,
-        delete = True,
-        path = paths['samtools']
     )
     # Calculate insert metrics
     metricsCommand = 'read m s <<< $(%s %s %s)' %(
@@ -295,9 +290,8 @@ else:
         sampleName = args['name']
     )
     # Combine commands
-    tophat2Complete = '%s && %s && %s && %s' %(
+    tophat2Complete = '%s && %s && %s' %(
         alignSampleCommand,
-        sortSampleCommand,
         metricsCommand,
         tophat2Command
     )
