@@ -79,7 +79,7 @@ def bowtie2Align(
     # Add read group data
     if readGroup:
         # Create read group list
-        rgList = ['--rg-id', readGroup]
+        rgList = ['--rg-id', str(readGroup)]
         if sampleName:
             rgList.extend(['--rg', 'SM:' + str(sampleName)])
         if libraryID:
@@ -238,9 +238,8 @@ def rsemBowtie2Align(
         read2 = ','.join(read2)
     # Build command
     rsemCommand = [rsemPath, '-p', str(threads), '--bowtie2',
-        '--bowtie2-sensitivity-level', 'very_sensitive', '--phred33',
-        genomeBam, estimateRspd, '--forward-prob', str(forProb), read1, index,
-        outPrefix]
+        '--bowtie2-sensitivity-level', 'very_sensitive', genomeBam,
+        estimateRspd, '--forward-prob', str(forProb), read1, index, outPrefix]
     # Process read2
     if read2:
         rsemCommand.insert(-3, '--paired-end')
