@@ -4,7 +4,7 @@ import gzip
 import re
 import itertools
 from ngs_python.fastq import fastqExtract
-from general_functions import writeFile
+from general_python import writeFile
 
 def mergeLabelPair(fastqIn1, fastqIn2, fastqOut, label1=':1', label2=':2'):
     ''' Function merges two FASTQ files into a single FASTQ file.

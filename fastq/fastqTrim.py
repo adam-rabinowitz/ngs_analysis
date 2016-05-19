@@ -12,8 +12,8 @@ def cutadaptTrimPaired(read1In, read2In, read1Out, read2Out, quality = 20,
     Illumina adapter. Output file names ending in '.gz' will cause the
     output to be gzipped compressed. Function takes  8 arguments:
     
-    1)  Read1 input fastq file.
-    2)  Read2 input fastq file.
+    1)  Read1 input fastq file or list of FASTQ files.
+    2)  Read2 input fastq file or list of FASTQ files.
     3)  Read1 output fastq file.
     4)  Read2 output fastq file.
     5)  Minimum base quality; Default = 20.

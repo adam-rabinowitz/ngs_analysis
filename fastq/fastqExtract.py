@@ -6,6 +6,63 @@ import cStringIO
 import itertools
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
+def readFastqProcess(fastq, pipes, shell = True):
+    ''' Function to open FASTQ files, parse entries and add individual
+    read to a pipe. Function takes three arguments:
+    
+    1)  fastq - Full path to FASTQ file.
+    2)  pipes - Send enabled pipe.
+    3)  shell - Boolean indicating whether to use shell 'zcat' command
+        to read FASTQ file.
+    
+    '''
+    # Loop through fastq files and add contents to pipe
+    for f in fastqFile:
+        # Create fastq handle
+        if shell and fastq.endswith('.gz'):
+            sp = subprocess.Popen(["zcat", f], stdout = subprocess.PIPE)
+            fh = cStringIO.StringIO(sp.communicate()[0])
+        elif f.endswith('.gz'):
+            fh = gzip.open(f)
+        else:
+            fh = open(f)
+        # Create output and add to pipe
+        for read in FastqGeneralIterator(fh):
+            pipe.send(read)
+        # Add poisin pill to pipe and close
+        pipe.close()
+        # Try to close the fastq handle
+        try:
+            fh.close()
+        except AttributeError:
+            continue
+
+def fastqPairIterator(fastq1, fastq2, shell = True):
+    # Create read1 pipes and process
+    pipe1Recv, pipe1Send = multiprocessing.Pipe(False)
+    process1 = multiprocessing.Process(
+        target = readFastqProcess,
+        args = (fastq1, pipe1Send, shell) 
+    )
+    process1.start()
+    pipe1Send.close()
+    # Create read2 pipes and process
+    pipe2Recv, pipe2Send = multiprocessing.Pipe(False)
+    process2 = multiprocessing.Process(
+        target = readFastqProcess,
+        args = (fastq2, pipe2Send, shell) 
+    )
+    process2.start()
+    pipe2Send.close()
+    # Create iterator from pipes
+    while True:
+        try:
+            read1 = pipe1Recv.recv()
+            read2 = pipe2Recv.recv()
+        except EOFError:
+            break
+        yield((read1, read2))
+
 def fastqCount(fastqFile, shell = True):
     ''' Creates a generator that parses FASTQ files using the 
     FastqGeneralIterator in Bio.SeqIO. Function takes one argument:
