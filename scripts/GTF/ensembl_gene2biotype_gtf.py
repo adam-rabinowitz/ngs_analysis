@@ -18,6 +18,8 @@ bRE = re.compile('gene_biotype\s+"(.*?)";')
 geneDict = collections.defaultdict(set)
 with open(args['<gtffile>'], 'r') as inFile:
     for line in inFile:
+        if line.startswith('#'):
+            continue
         data = line.strip().split('\t')[8]
         ensembl = re.search(eRE, data).group(1)
         biotype = re.search(bRE, data).group(1)

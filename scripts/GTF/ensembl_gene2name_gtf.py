@@ -18,6 +18,8 @@ nRE = re.compile('gene_name\s+"(.*?)";')
 geneDict = collections.defaultdict(set)
 with open(args['<gtffile>'], 'r') as inFile:
     for line in inFile:
+        if line.startswith('#'):
+            continue
         data = line.strip().split('\t')[8]
         ensembl = re.search(eRE, data).group(1)
         name = re.search(nRE, data). group(1)
