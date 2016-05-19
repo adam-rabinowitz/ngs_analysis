@@ -111,7 +111,7 @@ class maskMatrix(object):
                     selfProb, interProb, upProb, downProb, log2)
     
     def binDistance(self):
-        ''' Extract median interaction distance for bins '''
+        ''' Extract weighted mean interaction distance for bins '''
         # Create dataframe to store data
         df = pd.DataFrame(columns = ['dist'])
         self.binDF = pd.concat([self.binDF, df], axis=1)
