@@ -44,7 +44,6 @@ for count, infile in enumerate(args['<infiles>']):
             raise IOError('Input files must have identical headers')
     else:
         binNames = header
-print args['<infiles>']
 # Extract bin data
 splitBin = [re.split('[:-]',x) for x in binNames]
 binChr = np.array([x[0] for x in splitBin])
@@ -80,7 +79,7 @@ with open(args['<regions>'], 'r') as infile:
         indices = np.where(acceptableBins)[0]
         # Add indices to index dictionary
         if rname in indexDict:
-            indexDict[rname] = np.concatenate(indexDict[rname], indices)
+            indexDict[rname] = np.concatenate((indexDict[rname], indices))
         else:
             indexDict[rname] = indices
 # Check index dictionary and create entries in exclude dictionary
