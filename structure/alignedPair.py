@@ -4,7 +4,7 @@ import collections
 import gzip
 import multiprocessing
 from ngs_python.system import iohandle
-from general_functions import writeFile
+from general_python import writeFile
 
 def concordant(reads, maxSize):
     ''' Function to find concordant pairs. Input is a list/tuple
