@@ -5,7 +5,7 @@ from Bio.Seq import Seq
 import bisect
 import collections
 import gzip
-from general_functions import writeFile
+from general_python import writeFile
 
 def findFragendSites(fasta, resite):
     ''' Function creates FragendDict object. The object contains
