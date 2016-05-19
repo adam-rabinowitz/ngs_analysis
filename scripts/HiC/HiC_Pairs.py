@@ -64,7 +64,6 @@ print 'Parameters:\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s' %(
 # Create output file names
 args.logFile = args.outDir + args.sampleName + '.log'
 args.outFastq = args.outDir + args.sampleName + '_trimmed.fastq.gz'
-args.outSam = args.outDir + args.sampleName + '.sam'
 args.nameSortBam = args.outDir + args.sampleName + "_nSort.bam"
 args.outPairs = args.outDir + args.sampleName + ".readPairs.gz"
 args.outFrags = args.outDir + args.sampleName + ".fragLigations.gz"
@@ -95,26 +94,16 @@ print '\nTrim Metrics:\n\t%s\n\t%s\n\t%s\n\t%s' %(
 # Generate align command
 alignCommand = fastqAlign.bwaMemAlign(
     index = args.bwaFasta,
-    outSam = args.outSam,
+    outFile = args.nameSortBam,
     read1 = args.outFastq,
-    path = args.bwa,
+    bwaPath = args.bwa,
     threads = str(args.threads),
     markSecondary = True,
-    check = True
-)
-# Generate sort command
-sortCommand = samtools.sort(
-    inFile = args.outSam,
-    outFile = args.nameSortBam,
-    name = True,
-    threads = str(args.threads),
-    memory = '2G',
-    delete = True,
-    path = 'samtools'
+    check = True,
+    nameSort = True
 )
 # Merge commands and run
-alignSort = '%s && %s' %(alignCommand, sortCommand)
-subprocess.check_output(alignSort, shell = True, stderr=subprocess.STDOUT)
+subprocess.check_output(alignCommand, shell = True, stderr=subprocess.STDOUT)
 
 ###############################################################################
 ## Extract aligned pairs
