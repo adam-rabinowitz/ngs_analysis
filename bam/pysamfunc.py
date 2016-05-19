@@ -458,6 +458,71 @@ def calculateVariantMetrics(
     # Return data
     return(outputData)
 
+def strandTranAlign(alignment):
+    ''' Function calculates the proportion of specificity of reads aligned to a
+    sense reference transcriptome. Function takes 1 arguments:
+    
+    1)  alignment - A sam/bam file. Sorting unrequired.
+    
+    '''
+    # Open alignment file and create variable to store count
+    alignFile = pysam.AlignmentFile(alignment)
+    count = {'total': 0, 'sense': 0, 'antisense': 0, 'discord': 0}
+    for read in alignFile:
+        # Extract flag
+        flag = read.flag
+        # Skip unmapped reads
+        if flag & 4:
+            continue
+        # Count mapped reads
+        else:
+            count['total'] += 1
+        # Skip improper pairs
+        if not flag & 2:
+            count['discord'] += 1
+            continue
+        # Process read1
+        if flag & 64:
+            # Process R1 reverse
+            if flag & 16:
+                # Process R1 + R2 reverse
+                if flag & 32:
+                    count['discord'] += 1
+                # Process R1 reverse R2 forward
+                else:
+                    count['antisense'] += 1
+            # Process R1 forward
+            else:
+                # Process R1 forward + R2 reverse
+                if flag & 32:
+                    count['sense'] += 1
+                # Process R1 + R2 forward
+                else:
+                    count['antisense'] += 1
+        # Process R2
+        elif flag & 128:
+            # Process R2 reverse
+            if flag & 16:
+                # Process R2 + R1 reverse
+                if flag & 32:
+                    count['discord'] += 1
+                # Process R2 reverse R1 forward
+                else:
+                    count['sense'] += 1
+            # Process R2 forward
+            else:
+                # Process R2 forward + R1 reverse
+                if flag & 32:
+                    count['antisense'] += 1
+                # Process R2 + R1 forward
+                else:
+                    count['discord'] += 1
+        if count['total'] >= 100000:
+            print count
+            break
+
+# strandTranAlign('/farm/scratch/rs-bio-lif/rabino01/bonet/triplicateDataHaplo/rsemTran/NGS-6728/NGS-6728.transcript.bam')
+
 #data = calculateVariantMetrics(
 #    variantList = [('13',93096846,'A','C'),('7',59673519,'T','A')],
 #    bamList = [
