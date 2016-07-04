@@ -3,7 +3,7 @@
     Usage:
     
     varscan.py <sampledata> <bamdir> <varscandir> <outdir> <annovar>
-        <buildver> <database>
+        <buildver> <database> <fasta>
     
 '''
 # Import modules
@@ -120,6 +120,7 @@ for individual in sampleDict:
     sampleNames = ['NORM']
     bamFiles = []
     variants = set()
+    print '\n{}'.format(individual)
     # Extract bam for normal
     normName, normBam = sampleDict[individual].pop('NORM')
     bamFiles.append(normBam)
@@ -130,11 +131,14 @@ for individual in sampleDict:
         bamFiles.append(tissueData[1])
         # Extract snp and indel variants
         snpSet = varscan.variantSet(tissueData[2], somatic = True)
+        print '{} snp {}'.format(tissue, len(snpSet))
         variants.update(snpSet)
         indelSet = varscan.variantSet(tissueData[3], somatic = True)
+        print '{} indel {}'.format(tissue, len(indelSet))
         variants.update(indelSet)
     # Convert variant set to list
     variants = list(variants)
+    print 'total somatic {}'.format(len(variants))
     # Create filenames
     outFile = os.path.join(args['<outdir>'], individual + '.annotation')
     tempPrefix = os.path.join(args['<outdir>'], individual + '.tmp')
@@ -142,6 +146,7 @@ for individual in sampleDict:
         variantList = variants, bamList = bamFiles, sampleNames = sampleNames,
         annovarPath = args['<annovar>'], buildver = args['<buildver>'],
         database = args['<database>'], tempprefix = tempPrefix,
-        minMapQ = 20, minBaseQ = 20, groupdel = True
+        minMapQ = 20, minBaseQ = 20, groupdel = True, homo = True,
+        complexity = True, altQualNormal = 10, fasta = args['<fasta>']
     )
     varData.to_csv(outFile, sep = '\t', index = False)
