@@ -1,4 +1,6 @@
 from general_python import toolbox
+import collections
+import bisect
 
 def calcRatio(
         mpileup1, mpileup2
@@ -18,18 +20,18 @@ def somatic(
         varscanPath = 'varscan.jar'
     ):
     # Check commands
-    toolbox.checkArg(purity, 'num', gt = 0, mx = 1)
-    toolbox.checkArg(minCovNormal, 'int', gt = 0)
-    toolbox.checkArg(minCovTumour, 'int', gt = 0)
-    toolbox.checkArg(minHetFreq, 'num', gt = 0, lt = 1)
-    toolbox.checkArg(minHomFreq, 'num', gt = 0, mx = 1)
-    toolbox.checkArg(normalPurity, 'num', gt = 0, mx = 1)
-    toolbox.checkArg(normalPurity, 'num', gt = 0, mx = 1)
-    toolbox.checkArg(pValueHet, 'num', mn = 0, mx = 1)
-    toolbox.checkArg(pValueSomatic, 'num', mn = 0, mx = 1)
-    toolbox.checkArg(strandFilter, 'bool')
-    toolbox.checkArg(javaPath, 'file')
-    toolbox.checkArg(varscanPath, 'file')
+    toolbox.check_var(purity, 'num', gt = 0, mx = 1)
+    toolbox.check_var(minCovNormal, 'int', gt = 0)
+    toolbox.check_var(minCovTumour, 'int', gt = 0)
+    toolbox.check_var(minHetFreq, 'num', gt = 0, lt = 1)
+    toolbox.check_var(minHomFreq, 'num', gt = 0, mx = 1)
+    toolbox.check_var(normalPurity, 'num', gt = 0, mx = 1)
+    toolbox.check_var(normalPurity, 'num', gt = 0, mx = 1)
+    toolbox.check_var(pValueHet, 'num', mn = 0, mx = 1)
+    toolbox.check_var(pValueSomatic, 'num', mn = 0, mx = 1)
+    toolbox.check_var(strandFilter, 'bool')
+    toolbox.check_var(javaPath, 'file')
+    toolbox.check_var(varscanPath, 'file')
     # Create command
     command = [
         javaPath, '-jar', varscanPath, 'somatic', mpileup1, mpileup2,
@@ -45,6 +47,110 @@ def somatic(
     # Join and return command
     command = ' '.join(command)
     return(command)
+
+def filterVarscan(
+        inFile, outFile, filterFile = None,  minCovNormal = 10,
+        minCovTumour = 10, minFreqTumour = 0.05, maxFreqNormal = 1,
+        minVarTumour = 2, maxPvalue = 0.05, somatic = True, flank = 25,
+        maxNeighbour = 0
+    ):
+    # Create counter
+    logData =collections.OrderedDict([
+        ('Total', 0),
+        ('Somatic status', 0),
+        ('P-value', 0),
+        ('Tumour coverage', 0),
+        ('Tumour frequency', 0),
+        ('Tumour count', 0),
+        ('Normal coverage', 0),
+        ('Normal frequency', 0),
+        ('Neighbours', 0),
+        ('Passed filters', 0)
+    ])
+    # Check variables
+    toolbox.check_var(inFile, 'file')
+    toolbox.check_var(filterFile, 'file')
+    toolbox.check_var(minCovNormal, 'int', mn = 1)
+    toolbox.check_var(minCovTumour, 'int', mn = 1)
+    toolbox.check_var(minFreqTumour, 'num', gt = 0, mx = 1)
+    toolbox.check_var(maxFreqNormal, 'num', mn = 0, mx = 1)
+    toolbox.check_var(minVarTumour, 'int', mn = 1)
+    toolbox.check_var(maxPvalue, 'num', gt = 0)
+    toolbox.check_var(somatic, 'bool')
+    toolbox.check_var(flank, 'int', mn = 0)
+    toolbox.check_var(maxNeighbour, 'int', mn = 0)
+    # Create dictionary to store variant positions
+    varPos = {}
+    # Extract coordinates for neighbour filtering
+    for varFile in [inFile, filterFile]:
+        if varFile is None:
+            continue
+        with open(varFile) as varIn:
+            header = varIn.next()
+            for line in varIn:
+                chrom, pos = line.split('\t')[:2]
+                if chrom in varPos:
+                    varPos[chrom].append(int(pos))
+                else:
+                    varPos[chrom] = [int(pos)]
+    # Sort data
+    for key in varPos:
+        varPos[key].sort()
+    # Open input and output files
+    with open(inFile) as varin:
+        with open(outFile, 'w') as varout:
+            # Write header
+            varout.write(varin.next())
+            # Loop through input
+            for line in varin:
+                # Count and extract data
+                logData['Total'] += 1
+                varData = line.split('\t')
+                # Check somatic status and p-value
+                status = str(varData[12])
+                pValue = float(varData[14])
+                if somatic and status != 'Somatic':
+                    logData['Somatic status'] += 1
+                    continue
+                if pValue > maxPvalue:
+                    logData['P-value'] += 1
+                    continue
+                # Check coverage and frequency
+                covNormal = int(varData[4]) + int(varData[5])
+                freqNormal = int(varData[5]) / float(covNormal)
+                covTumour = int(varData[8]) + int(varData[9])
+                freqTumour = int(varData[9]) / float(covTumour)
+                varTumour = int(varData[9])
+                if covTumour < minCovTumour:
+                    logData['Tumour coverage'] += 1
+                    continue
+                if freqTumour < minFreqTumour:
+                    logData['Tumour frequency'] += 1
+                    continue
+                if varTumour < minVarTumour:
+                    logData['Tumour count'] += 1
+                    continue
+                if covNormal < minCovNormal:
+                    logData['Normal coverage'] += 1
+                    continue
+                if freqNormal > maxFreqNormal:
+                    logData['Normal frequency'] += 1
+                    continue
+                # Check flanking mutations
+                chrom = varData[0]
+                start = int(varData[1]) - flank
+                end = int(varData[1]) + flank
+                startIndex = bisect.bisect_left(varPos[chrom], start)
+                endIndex = bisect.bisect_right(varPos[chrom], end, lo = startIndex)
+                neighbourCount = (endIndex - startIndex) - 1
+                if neighbourCount > maxNeighbour:
+                    logData['Neighbours'] += 1
+                    continue
+                # Write output line
+                logData['Passed filters'] += 1
+                varout.write(line)
+    # Return log
+    return(logData)
 
 def copynumber(
         mpileup1, mpileup2, outPrefix, minBaseQ = 20, minMapQ = 20,
@@ -66,13 +172,13 @@ def copynumber(
     
     '''
     # Check commands
-    toolbox.checkArg(minBaseQ, 'int', gt = 0)
-    toolbox.checkArg(minMapQ, 'int', gt = 0)
-    toolbox.checkArg(minCov, 'int', gt = 0)
-    toolbox.checkArg(minSegSize, 'int', gt = 0)
-    toolbox.checkArg(maxSegSize, 'int', mn = minSegSize)
-    toolbox.checkArg(pValue, 'num', mn = 0, mx = 1)
-    toolbox.checkArg(dataRatio, 'num', mn = 0.01, mx = 100)
+    toolbox.check_var(minBaseQ, 'int', gt = 0)
+    toolbox.check_var(minMapQ, 'int', gt = 0)
+    toolbox.check_var(minCov, 'int', gt = 0)
+    toolbox.check_var(minSegSize, 'int', gt = 0)
+    toolbox.check_var(maxSegSize, 'int', mn = minSegSize)
+    toolbox.check_var(pValue, 'num', mn = 0, mx = 1)
+    toolbox.check_var(dataRatio, 'num', mn = 0.01, mx = 100)
     # Create command to calculate depth if required
     if dataRatio is None:
         ratioCommand = 'R=$(%s) && echo "Ratio: $R"' %(
@@ -96,7 +202,7 @@ def copynumber(
 
 def filterSomatic(
         inFile, outFile, minCov = 10, minReads = 2, minStrands = 1,
-        minAvgQ = 10, minVarFreq = 0.1, pValue = 0.01, indelFile = None,
+        minAvgQ = 10, minVarFreq = 0.1, pValue = 0.05, indelFile = None,
         javaPath = 'java', varscanPath = 'varscan.jar'
     ):
     '''
@@ -111,12 +217,12 @@ def filterSomatic(
     
     '''
     # Check numerical arguments
-    toolbox.checkArg(minCov, 'int', mn = 1)
-    toolbox.checkArg(minReads, 'int', mn = 1)
-    toolbox.checkArg(minStrands, 'int', mn = 1, mx = 2)
-    toolbox.checkArg(minAvgQ, 'int', mn = 2)
-    toolbox.checkArg(minVarFreq, 'num', gt = 0, mx = 1)
-    toolbox.checkArg(pValue, 'num', gt = 0, mx = 1)
+    toolbox.check_var(minCov, 'int', mn = 1)
+    toolbox.check_var(minReads, 'int', mn = 1)
+    toolbox.check_var(minStrands, 'int', mn = 1, mx = 2)
+    toolbox.check_var(minAvgQ, 'int', mn = 2)
+    toolbox.check_var(minVarFreq, 'num', gt = 0, mx = 1)
+    toolbox.check_var(pValue, 'num', gt = 0, mx = 1)
     # Create command
     command = [javaPath, '-jar', varscanPath, 'somaticFilter', inFile,
         '--min-coverage', str(minCov), '--min-reads2', str(minReads),
