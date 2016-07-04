@@ -30,11 +30,11 @@ args['--threads'] = int(args['--threads'])
 if args['nobed']:
     args['<binsize>'] = int(args['<binsize>'])
 # Check input files
-toolbox.checkArg(args['<infile>'], 'file')
+toolbox.check_var(args['<infile>'], 'file')
 if args['bed']:
-    toolbox.checkArg(args['<bedfile>'], 'file')
+    toolbox.check_var(args['<bedfile>'], 'file')
 else:
-    toolbox.checkArg(args['<chrfile>'], 'file')
+    toolbox.check_var(args['<chrfile>'], 'file')
 # Extract and print parameters to create bins
 if args['bed']:
     binData = args['<bedfile>']
