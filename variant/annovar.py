@@ -2,6 +2,7 @@ from ngs_python.variant import varscan
 import pandas as pd
 import os
 import subprocess
+import numpy as np
 
 def geneAnno(
         inFile, outPrefix, path, buildver, database
@@ -14,7 +15,6 @@ def geneAnno(
     # Build command
     command = [path, '-geneanno', '-buildver', buildver, '-outfile',
         outPrefix, inFile, database]
-    print command
     # Join and return command
     command = ' '.join(command)
     return(command)
@@ -53,25 +53,26 @@ def geneAnno2DF(
     # Read in annovar output files
     vf = pd.read_csv(varFunc, sep = "\t", index_col = -1, header = None)
     vf.columns = ['class', 'genes', 'chrom', 'start', 'end', 'ref', 'var']
-    evf = pd.read_csv(exonVarFunc, sep = "\t", index_col = -1, header = None)
-    evf.columns = ['line', 'affect', 'change', 'chrom', 'start', 'end', 'ref',
-        'var']
-    outDF = pd.concat(
-        [vf[['class','genes']], evf[['affect','change']]],
-        axis = 1
-    )
+    # Create output dataframe from annovar output
+    try:
+        evf = pd.read_csv(exonVarFunc, sep = "\t", index_col = -1,
+            header = None)
+    except ValueError:
+        evf = None
+    if evf is None:
+        outDF = vf.loc[:,['class','genes']]
+        outDF['affect'] = np.nan
+        outDF['change'] = np.nan
+    else:
+        evf.columns = ['line', 'affect', 'change', 'chrom', 'start', 'end',
+            'ref', 'var']
+        outDF = pd.concat(
+            [vf[['class','genes']], evf[['affect','change']]],
+            axis = 1
+        )
     # Delete temporary files
     for f in [annoIn, varFunc, exonVarFunc, annoLog]:
         if os.path.isfile(f):
             os.remove(f)
     # Return annovar output
     return(outDF)
-
-#data = geneAnno2DF(
-#    variantList = [('1',83276021,'T','C'),('1',9545985,'A','G')],
-#    annovar = '/farm/babs/redhat6/software/annovar_2015Jun17/annotate_variation.pl',
-#    buildver = 'mm10',
-#    database = '/farm/babs/redhat6/software/annovar_2015Jun17/mousedb/',
-#    tempprefix = '/farm/scratch/rs-bio-lif/rabino01/Elza/annotemp'
-#)
-#print data
