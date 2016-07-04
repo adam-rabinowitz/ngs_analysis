@@ -42,8 +42,8 @@ args = docopt.docopt(__doc__,version = 'v1')
 # Extract sample prefix and name = args['<sampledata>'].split(',')
 args['prefix'], args['name'] = args['<sampledata>'].split(',')
 # Check supplied files
-toolbox.checkArg(args['<gtf>'], 'file')
-toolbox.checkArg(args['<rrna>'], 'file')
+toolbox.check_var(args['<gtf>'], 'file')
+toolbox.check_var(args['<rrna>'], 'file')
 # Extract fastq files and check
 if args['--singleend']:
     args['read1']  = fastqFind.findFastq(
@@ -88,7 +88,7 @@ for directory in dirList:
 # Extract path data and check
 paths = toolbox.fileDict(args['<paths>'], sep = '\t')
 for program in paths:
-    toolbox.checkArg(paths[program], 'exc')
+    toolbox.check_var(paths[program], 'exc')
 # Generate object to store and submit commands
 moabJobs = moab.moabJobs()
 
@@ -149,18 +149,21 @@ else:
         read1Fastqc,
         read2Fastqc
     )
-# Submit trimming commands
+## Submit trimming commands
+#trimReadsJobID = moabJobs.add(
+#    command = trimReadsCommand,
+#    stdout = args['trimLog'],
+#    stderr = args['trimLog']
+#)
+## Submit FASTQC commands
+#fastqcJobID = moabJobs.add(
+#    command = fastqcCommand,
+#    stdout = args['qcLog'],
+#    stderr = args['qcLog'],
+#    dependency = [trimReadsJobID]
+#)
 trimReadsJobID = moabJobs.add(
-    command = trimReadsCommand,
-    stdout = args['trimLog'],
-    stderr = args['trimLog']
-)
-# Submit FASTQC commands
-fastqcJobID = moabJobs.add(
-    command = fastqcCommand,
-    stdout = args['qcLog'],
-    stderr = args['qcLog'],
-    dependency = [trimReadsJobID]
+    command = 'true'
 )
 
 ################################################################################
@@ -172,7 +175,7 @@ args['rsemTranLog'] = args['rsemTranPrefix'] + '_RSEM.log'
 args['rsemTranBam'] = args['rsemTranPrefix'] + '.transcript.bam'
 args['rsemTranGenomeBam'] = args['rsemTranPrefix'] + '.genome.bam'
 # Generate rsem transcript alignment command
-rsemTranAlign = fastqAlign.rsemBowtie2Align(
+rsemAlignCommand = fastqAlign.rsemBowtie2Align(
     read1 = args['trimRead1'],
     read2 = args['trimRead2'],
     index = args['<rsemtranindex>'],
@@ -181,16 +184,11 @@ rsemTranAlign = fastqAlign.rsemBowtie2Align(
     bowtie2Path = re.sub('[^/]*$', '', paths['bowtie2']),
     threads = args['--threads'],
     forProb = args['--forprob'],
-    genomeBam = False
-)
-rsemTranCommand = '%s && rm %s %s' %(
-    rsemTranAlign,
-    args['rsemTranBam'],
-    args['rsemTranGenomeBam']
+    genomeBam = True
 )
 # Submit rsem transcript command
-rsemTranJobID = moabJobs.add(
-    command = rsemTranCommand,
+rsemAlignJobID = moabJobs.add(
+    command = rsemAlignCommand,
     processors = args['--threads'],
     stdout = args['rsemTranLog'],
     stderr = args['rsemTranLog'],
