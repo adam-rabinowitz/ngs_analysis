@@ -26,7 +26,7 @@ def bowtie2Align(
     
     '''
     # Check for index extensions
-    toolbox.checkArg(check, 'bool')
+    toolbox.check_var(check, 'bool')
     if check:
         suffixes = ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
             '.rev.2.bt2']
@@ -34,21 +34,21 @@ def bowtie2Align(
             if not os.path.isfile(index + s):
                 raise IOError('Index file %s no found' %(index + s))
     # Check and process discordant
-    toolbox.checkArg(discordant, 'bool')
+    toolbox.check_var(discordant, 'bool')
     if discordant:
         discordant = ''
     else:
         discordant = '--no-discordant'
     # Check mixed
-    toolbox.checkArg(mixed, 'bool')
+    toolbox.check_var(mixed, 'bool')
     if mixed:
         mixed = ''
     else:
         mixed = '--no-mixed'
     # Check upto argument
-    toolbox.checkArg(upto, 'int', mn=1)
+    toolbox.check_var(upto, 'int', mn=1)
     # Check maximum insert argument
-    toolbox.checkArg(maxInsert, 'int', mn = 1)
+    toolbox.check_var(maxInsert, 'int', mn = 1)
     # Check outut file name and generate intermediate file names
     if outFile.endswith('.sam'):
         outSam = outFile
@@ -131,14 +131,14 @@ def bwaMemAlign(
     
     '''
     # Check index extensions if requested
-    toolbox.checkArg(check, 'bool')
+    toolbox.check_var(check, 'bool')
     if check:
         suffixes = ['.amb', '.ann', '.bwt', '.pac', '.sa']
         for s in suffixes:
             if not os.path.isfile(index + s):
                 raise IOError('Genome index file %s no found' %(index + s))
     # Process secondary command
-    toolbox.checkArg(markSecondary, 'bool')
+    toolbox.check_var(markSecondary, 'bool')
     if markSecondary:
         markSecondary = '-M'
     else:
@@ -208,7 +208,7 @@ def rsemBowtie2Align(
     
     '''
     # Check for correct suffixes
-    toolbox.checkArg(check, 'bool')
+    toolbox.check_var(check, 'bool')
     if check:
         suffix = [
             '.grp', '.ti', '.transcripts.fa', '.seq', '.idx.fa', '.1.bt2',
@@ -220,13 +220,13 @@ def rsemBowtie2Align(
                 index + s
             ))
     # Process genomeBAM argument
-    toolbox.checkArg(genomeBam, 'bool')
+    toolbox.check_var(genomeBam, 'bool')
     if genomeBam:
         genomeBam = '--output-genome-bam'
     else:
         genomeBam = ''
     # Process estimateRspd argument
-    toolbox.checkArg(estimateRspd, 'bool')
+    toolbox.check_var(estimateRspd, 'bool')
     if estimateRspd:
         estimateRspd = '--estimate-rspd'
     else:
@@ -283,7 +283,7 @@ def tophat2Align(
     
     '''
     # Check for suffixes to transcriptome and genome indices
-    toolbox.checkArg(check, 'bool')
+    toolbox.check_var(check, 'bool')
     if check:
         # Check for Bowtie2 Genome indeces
         suffix = ['.1.bt2', '.2.bt2', '.3.bt2', '.4.bt2', '.rev.1.bt2',
@@ -298,7 +298,7 @@ def tophat2Align(
                     transcriptIndex + s
                 ))
     # Process forProb argument
-    toolbox.checkArg(forProb, 'num', mn = 0, mx = 1)
+    toolbox.check_var(forProb, 'num', mn = 0, mx = 1)
     if forProb == 1:
         forProb = 'fr-secondstrand'
     elif forProb == 0:
@@ -306,13 +306,13 @@ def tophat2Align(
     else:
         forProb = 'fr-unstranded'
     # Process discordant
-    toolbox.checkArg(discordant, 'bool')
+    toolbox.check_var(discordant, 'bool')
     if discordant:
         discordant = ''
     else:
         discordant = '--no-discordant'
     # Process mixed
-    toolbox.checkArg(mixed, 'bool')
+    toolbox.check_var(mixed, 'bool')
     if mixed:
         mixed = ''
     else:
@@ -320,10 +320,10 @@ def tophat2Align(
     # Process read arguments
     if isinstance(read1, list):
         read1 = ','.join(read1)
-    toolbox.checkArg(read1, 'str')
+    toolbox.check_var(read1, 'str')
     if isinstance(read2, list):
         read2 = ','.join(read2)
-    toolbox.checkArg(read2, 'str')
+    toolbox.check_var(read2, 'str')
     # Build tophat2 command
     tophatCommand = [path, '-o', outDir, '-p', str(threads),
         '--transcriptome-index', transcriptIndex, discordant,
@@ -331,9 +331,9 @@ def tophat2Align(
         '--b2-very-sensitive', genomeIndex, read1, read2]
     # Process mate arguments
     if not mateDist.startswith('$'):
-        toolbox.checkArg(mateDist, 'int', mn = -100, mx = 5000)
+        toolbox.check_var(mateDist, 'int', mn = -100, mx = 5000)
     if not mateDist.startswith('$'):
-        toolbox.checkArg(mateSD, 'int', gt = 0, mx = 5000)
+        toolbox.check_var(mateSD, 'int', gt = 0, mx = 5000)
     if read2:
         mateArgument = ['--mate-inner-dist', str(mateDist),
             '--mate-std-dev', str(mateSD)]
