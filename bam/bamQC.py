@@ -20,7 +20,7 @@ def RNASeqC(inBam, fasta, gtf, rRNA, outDir, outPrefix, seqcPath,
 
     '''
     # Check FASTA file
-    toolbox.checkArg(check, 'bool')
+    toolbox.check_var(check, 'bool')
     if check:
         fai = fasta + '.fai'
         dict = fasta[:-2] + 'dict'
@@ -33,7 +33,7 @@ def RNASeqC(inBam, fasta, gtf, rRNA, outDir, outPrefix, seqcPath,
     seqcCommand = [javaPath, '-jar', seqcPath, '-r', fasta, '-rRNA', rRNA,
         '-t', gtf, '-o', outDir, '-s', sampleData]
     # Process singleEnd Argument
-    toolbox.checkArg(singleEnd, 'bool')
+    toolbox.check_var(singleEnd, 'bool')
     if singleEnd:
         seqcCommand.append('-singleEnd')
     # Join and return command
