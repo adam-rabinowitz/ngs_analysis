@@ -18,6 +18,8 @@ tRE = re.compile('transcript_id\s+"(.*?)";')
 geneDict = collections.defaultdict(set)
 with open(args['<gtffile>'], 'r') as inFile:
     for line in inFile:
+        if line.startswith('#'):
+            continue
         data = line.strip().split('\t')[8]
         gene = re.search(gRE, data).group(1)
         tran = re.search(tRE, data).group(1)
