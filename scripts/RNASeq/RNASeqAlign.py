@@ -149,21 +149,18 @@ else:
         read1Fastqc,
         read2Fastqc
     )
-## Submit trimming commands
-#trimReadsJobID = moabJobs.add(
-#    command = trimReadsCommand,
-#    stdout = args['trimLog'],
-#    stderr = args['trimLog']
-#)
-## Submit FASTQC commands
-#fastqcJobID = moabJobs.add(
-#    command = fastqcCommand,
-#    stdout = args['qcLog'],
-#    stderr = args['qcLog'],
-#    dependency = [trimReadsJobID]
-#)
+# Submit trimming commands
 trimReadsJobID = moabJobs.add(
-    command = 'true'
+    command = trimReadsCommand,
+    stdout = args['trimLog'],
+    stderr = args['trimLog']
+)
+# Submit FASTQC commands
+fastqcJobID = moabJobs.add(
+    command = fastqcCommand,
+    stdout = args['qcLog'],
+    stderr = args['qcLog'],
+    dependency = [trimReadsJobID]
 )
 
 ################################################################################

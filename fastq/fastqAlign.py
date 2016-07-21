@@ -330,9 +330,15 @@ def tophat2Align(
         mixed, '--library-type', forProb, '--keep-fasta-order',
         '--b2-very-sensitive', genomeIndex, read1, read2]
     # Process mate arguments
-    if not mateDist.startswith('$'):
+    if isinstance(mateDist, str):
+        if not mateDist.startswith('$'):
+            raise ValueError()
+    else:
         toolbox.check_var(mateDist, 'int', mn = -100, mx = 5000)
-    if not mateDist.startswith('$'):
+    if isinstance(mateSD, str):
+        if not mateDist.startswith('$'):
+            raise ValueError()
+    else:
         toolbox.check_var(mateSD, 'int', gt = 0, mx = 5000)
     if read2:
         mateArgument = ['--mate-inner-dist', str(mateDist),
