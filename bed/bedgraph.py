@@ -1,47 +1,59 @@
 import collections
+import multiprocessing
 import pysam
 import os
+import pandas as pd
 
-def intlist2covlist(intlist):
+def bedgraph_coverage(intervals):
     ''' Function creates coverage from a supplied interval list.
     Function takes 1 argument:
     
-    1)  intlist - A list of 2-element tuples/lists where the first element
-        is the start of the interval and the second element if the end of
-        the interval.
+    1)  intervals - Either a pair of 'multiprocessing.connection' objects
+    or an iterable. The pipe or iterable should deliver 
     
     Function return a list of 3-element tuples where the first element is
     the start of the region, the second element is the end of the region
     and the third element is the coverage
     '''
-    # Create change dictionary
-    changeDict = collections.defaultdict(int)
-    for start, end in intlist:
-        changeDict[start] += 1
-        changeDict[end] -= 1
-    # Extract keys from dictionary and sort
-    changePositions = changeDict.keys()
-    changePositions.sort()
-    # Set variables to calculate coverage
-    coverage = 0
-    coverageStart = 0
-    coverageList = []
-    # Loop through changes and calculate coverage
-    for position in changePositions:
-        # Extract change and skip zeros
-        change = changeDict[position]
-        if change == 0:
-            continue
-        # Write output if coverage != 0
-        if coverage != 0:
-            # Append region to list
-            coverageList.append((coverageStart, position, coverage))
-        # Adjust variables
-        coverage += change
-        coverageStart = position
-    # Return coverage list
-    return(coverageList)
+    # Create iterator from pipes or supplied iterator
+    try:
+        parentConn, childConn = intervals
+        parentConn.close()
+        interval_iterator = iter(childConn.recv, None)
+        return = childConn.send
+    except:
+        interval_iterator = intervals
+    # Create change dictionary and add elements from iterable
+    changeDict = collections.OrderedDict()
+    for chrom, start, end in interval_iterator:
+        if chrom in changeDict:
+            changeDict[chrom][start] += 1
+            changeDict[chrom][end] -= 1
+        else:
+            changeDict[chrom] = collections.defaultdict(int)
+            changeDict[chrom][start] += 1
+            changeDict[chrom][end] -= 1
+    # Create variables to generate bedgraph data
+    bedgraph = pd.DataFrame(columns = ['chrom', 'start', 'end', 'cov'])
+    chromosomes = changeDict.keys()
+    for chrom in chromosomes:
+        # Create a series from dictionary and calculate coverage
+        changeSeries = pd.Series(changeDict.pop(chrom))
+        changeSeries = changeSeries[changeSeries != 0]
+        coverage = changeSeries.cumsum()
+        if coverage.iloc[-1] != 0:
+            raise ValueError('Error in coverage calculation')
+        # Create data frame and add to output
+        changeDataFrame = pd.DataFrame({'chrom' : chrom,
+            'start' : changeSeries.index[:-1], 'end' : changeSeries.index[1:],
+            'cov' : coverage.iloc[:-1]}, columns = ['chrom', 'start', 'end',
+            'cov'])
+        bedgraph = pd.concat((bedgraph, changeDataFrame))
+    # Return bedgraph
+    return(bedgraph)
 
+x = bedgraph_coverage([('x',15,25),('y',30,40),('x',10,20)])
+print x
 
 def intlist2bg(pipe, bedgraph):
     ''' Function to parse list of overlapping genomic intervals and
@@ -155,5 +167,3 @@ def bam2bg(bam, bedgraph):
     pipeSend.close()
     intlist2bgProcess.join()
 
-import multiprocessing
-bam2bg('/farm/scratch/rs-bio-lif/rabino01/Elza/bamFiles/310123-NORM_dedup_realign_recal.bam', '/farm/home/rabino01/test.bedgraph')
