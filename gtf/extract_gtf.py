@@ -46,3 +46,54 @@ def extract_exons_bed(gene, gtf, bed, identifier='id', source=None):
             )
             print(bedLine)
             outFile.write(bedLine)
+
+def extract_tss(gtf, bed, source=None):
+    ''' Function to generate bed file listing the first transcribed
+    base of all transcripts in a bed file.
+    
+    Args:
+        gtf (str)- Full path to input gtf file.
+        bed (str)- Full path to output bed file.
+        source (str)- Value to match in source column of gtf.
+    
+    '''
+    noRegx = re.compile('exon_number "(\\d+)"')
+    idRegx = re.compile('transcript_id "(\\w+)"')
+    with open(gtf) as inFile, open(bed, 'w') as outFile:
+        for line in inFile:
+            # Skip header lines
+            if line.startswith('#'):
+                continue
+            # Extract line data and check source
+            lineData = line.strip().split('\t')
+            if source and lineData[1] != source:
+                continue
+            # Extract and check exon number
+            exonNumber = noRegx.search(lineData[8]).group(1)
+            if exonNumber != '1':
+                continue
+            # Extract gene id
+            geneID = idRegx.search(lineData[8]).group(1)
+            # Find exon start
+            if lineData[6] == '+':
+                tss = int(lineData[3])
+            elif lineData[6] == '-':
+                tss = int(lineData[4])
+            else:
+                raise ValueError("Strand must be '+' or '-'")
+            # Create output line
+            start = tss - 1
+            end = tss
+            outLine = '{}\t{}\t{}\t{}\t0\t{}\n'.format(
+                lineData[0],
+                start,
+                end,
+                geneID,
+                lineData[6]
+            )
+            outFile.write(outLine)
+
+extract_tss(
+    '/farm/scratch/rs-bio-lif/rabino01/Ascl1/genomeData/Mus_musculus.GRCm38.80.exon.gtf',
+    '/farm/scratch/rs-bio-lif/rabino01/Ascl1/genomeData/Mus_musculus.GRCm38.80.tss.bed'
+)
