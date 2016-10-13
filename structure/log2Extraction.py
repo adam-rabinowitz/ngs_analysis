@@ -158,7 +158,7 @@ class tad_analysis(object):
 #    '/farm/scratch/rs-bio-lif/rabino01/Yasu/Yasu_HiC/2kbBinData/auroraBInterphaseMitosis/NGS-8178.2000.III_ArmR.500.normMatrix.gz',
 #    '/farm/scratch/rs-bio-lif/rabino01/Yasu/Yasu_HiC/2kbBinData/auroraBInterphaseMitosis/NGS-8179.2000.III_ArmR.500.normMatrix.gz'
 #]
-inDir = '/farm/scratch/rs-bio-lif/rabino01/Yasu/Yasu_HiC/2kbBinData/auroraBInterphaseMitosis/'
+inDir = '/farm/scratch/rs-bio-lif/rabino01/Yasu/Yasu_HiC/2kbBinData/smc4G1Mitosis/'
 inputFiles = os.listdir(inDir)
 inputFiles = [os.path.join(inDir, x) for x in inputFiles if x.endswith('normMatrix.gz')]
 ta = tad_analysis(inputFiles)
@@ -167,4 +167,4 @@ print(ta.sampleList)
 #print(ta.binSize, ta.minCount)
 df = ta.calc_log2(2, 100, 4)
 print(df.shape)
-df.to_csv('/farm/home/rabino01/test.df', sep='\t', index=False)
+df.to_csv('/farm/scratch/rs-bio-lif/rabino01/Yasu/Yasu_HiC/2kbBinData/smc4G1Mitosis/log2.df.txt', sep='\t', index=False)
