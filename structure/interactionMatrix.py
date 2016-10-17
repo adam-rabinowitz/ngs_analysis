@@ -228,21 +228,22 @@ class genomeBin(object):
 
 class normaliseCountMatrices(object):
     
-    def __init__(self, matrixList, regionFile):
+    def __init__(self, matrixList, regionFile, rmDiag=True):
         # Store supplied data
         self.matrixList = matrixList
         self.regionFile = regionFile
+        self.rmDiag = rmDiag
+        print(self.regionFile)
         # Extract bin and region data
-        self.binNames, self.binChr, self.binStart, self.binEnd = self.extractBinData()
-        self.regionIndices = self.extractRegionIndices()
+        self.binNames, self.binChr, self.binStart, self.binEnd = (
+            self.__extractBinData())
+        self.regionIndices = self.__extractRegionIndices()
         # Create low bin dictionary and set minimum count
-        self.lowBins = {}
-        for region, indices in self.regionIndices.items():
-            self.lowBins[region] = np.zeros(len(indices), dtype=bool)
-        self.minCount = 0
         self.subMatrices = []
+        self.lowBins = None
+        self.minCount = None
     
-    def extractBinData(self):
+    def __extractBinData(self):
         # Check bin names are identical across all files
         for count, infile in enumerate(self.matrixList):
             if not infile.endswith('countMatrix.gz'):
@@ -279,7 +280,7 @@ class normaliseCountMatrices(object):
         # Return data
         return(np.array(binNames), binChr, binStart, binEnd)
     
-    def extractRegionIndices(self):
+    def __extractRegionIndices(self):
         ''' Function generates, and returns, a dictionary of indices for regions in
         self.regionFile.'''
         # Create variable to store region indices and loop through file
@@ -313,17 +314,22 @@ class normaliseCountMatrices(object):
         # Return region index data
         return(regionIndices)
     
-    def colSumsMatrix(self, inQueue, outQueue):
+    def __colSumsMatrix(self, inQueue, outQueue):
         for matrix in iter(inQueue.get, None):
+            # Read in counts and remove diagonal if required
             counts = np.loadtxt(fname = matrix, dtype = np.uint32,
                 delimiter = '\t', skiprows = 1)
+            if self.rmDiag:
+                np.fill_diagonal(counts, 0)
+            # Extract row and coulmn sums and check they are equal
             colSums = counts.sum(axis=0)
             rowSums = counts.sum(axis=1)
             if not np.array_equal(colSums, rowSums):
                 raise ValueError('matrix {} not symetrical'.format(matrix))
+            # Return column data
             outQueue.put(colSums)
-
-    def extractLowBins(self, minCount, threads):
+    
+    def __extractLowBins(self, threads = 4):
         ''' Function calclates low bins for each region '''
         # Create queues and processes
         inQueue = multiprocessing.Queue()
@@ -331,7 +337,7 @@ class normaliseCountMatrices(object):
         processList = []
         for _ in range(threads):
             process = multiprocessing.Process(
-                target = self.colSumsMatrix,
+                target = self.__colSumsMatrix,
                 args = (inQueue, outQueue)
             )
             process.start()
@@ -351,15 +357,14 @@ class normaliseCountMatrices(object):
         outQueue.close()
         # Calculate low bins
         colSumArray = np.array(colSumList)
-        lowBins = colSumArray.min(axis=0) < minCount
+        lowBins = colSumArray.min(axis=0) < self.minCount
         # Generate and store low bins
         lowBinsDict = {}
         for region, indices in self.regionIndices.items():
             lowBinsDict[region] = lowBins[indices]
-        self.lowBins = lowBinsDict
-        self.minCount = minCount
-
-    def saveSubMatrix(self, inQueue, outQueue):
+        return(lowBinsDict)
+    
+    def __saveSubMatrixProcess(self, inQueue, outQueue):
         # Extract matrices and output directory from index
         for matrix, outDir in iter(inQueue.get, None):
             # Create variable to store files
@@ -377,10 +382,12 @@ class normaliseCountMatrices(object):
                 lowBins = self.lowBins[region]
                 if len(lowBins) != len(indices):
                     raise ValueError('Number of bins uncertain')
-                # Extract and process sub matrix
+                # Remove low bins and diagonal, if not required
                 regionCounts = counts[indices,:][:,indices]
                 regionCounts[lowBins,:] = 0
                 regionCounts[:,lowBins] = 0
+                if self.rmDiag:
+                    np.fill_diagonal(regionCounts, 0)
                 # Generate output file and save sub matrix
                 outFile = '{}.{}.{}.countMatrix.gz'.format(
                     sampleName, region, self.minCount)
@@ -393,14 +400,22 @@ class normaliseCountMatrices(object):
             # Return file list
             outQueue.put(fileList)
     
-    def saveSubMatrices(self, outDir, threads):
+    def __saveSubMatrices(self, outDir, minCount, threads):
+        # Extract low bins
+        self.minCount = minCount
+        if minCount == 0:
+            self.lowBins = {}
+            for region, indices in self.regionIndices.items():
+                self.lowBins[region] = np.zeros(len(indices), dtype=bool)
+        else:
+            self.lowBins = self.__extractLowBins(threads)
         # Create queue and processes:
         inQueue = multiprocessing.Queue()
         outQueue = multiprocessing.Queue()
         processList = []
         for _ in range(threads):
             process = multiprocessing.Process(
-                target = self.saveSubMatrix,
+                target = self.__saveSubMatrixProcess,
                 args = (inQueue, outQueue)
             )
             process.start()
@@ -421,8 +436,8 @@ class normaliseCountMatrices(object):
         outQueue.close()
         # Store sub matrices
         self.subMatrices.extend(subMatrixList)
-
-    def normaliseSubMatrix(self, inQueue):
+    
+    def __normaliseSubMatrixProcess(self, inQueue):
         # Extract matrices and output directory from index
         for matrix, path, memory, iterations in iter(inQueue.get, None):
             # Extract header and calculate bin number
@@ -457,14 +472,28 @@ class normaliseCountMatrices(object):
             subprocess.check_call(['gzip', tempMatrix])
     
     def normaliseSubMatrices(
-            self, path, threads, memory = 4000, iterations = 1000
+            self, outDir, minCount, path, threads, memory = 4000,
+            iterations = 1000
         ):
+        # Check arguments
+        if not os.path.isdir(outDir):
+            raise ValueError('Output directory could not be found')
+        if not isinstance(minCount, int) or minCount < 0:
+            raise ValueError('minCount must be a non-negative integer')
+        if not isinstance(threads, int) or threads < 1:
+            raise ValueError('threads must a positive integer')
+        if not isinstance(memory, int) or memory < 1000:
+            raise ValueError('memory must a positive integer >= 1000')
+        if not isinstance(iterations, int) or iterations < 100:
+            raise ValueError('iterations must a positive integer')
+        # Create sub matrices
+        self.__saveSubMatrices(outDir, minCount, threads)
         # Create queue and processes:
         inQueue = multiprocessing.Queue()
         processList = []
         for _ in range(threads):
             process = multiprocessing.Process(
-                target = self.normaliseSubMatrix,
+                target = self.__normaliseSubMatrixProcess,
                 args = (inQueue,)
             )
             process.start()
@@ -478,7 +507,7 @@ class normaliseCountMatrices(object):
         for process in processList:
             process.join()
         inQueue.close()
-
+        self.subMatrices = []
 
 
 

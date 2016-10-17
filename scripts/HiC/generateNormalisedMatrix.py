@@ -4,7 +4,7 @@ Usage:
     
     generateNormalisedMatrix.py <regions> <mincount> <outdir> <infiles>...
         [--path=<paths>] [--threads=<threads>] [--memory=<memory>]
-        [--iter=<iter>]
+        [--iter=<iter>] [--keepdiag]
     
     generateNormalisedMatrix.py (-h | --help)
     
@@ -14,6 +14,7 @@ Options:
     --threads=<threads>  Number of threads [default: 1]
     --memory=<memory>    Memory (MB) per thread [default: 2000]
     --iter=<iter>        Iterations of ic_mes [default: 1000]
+    --keepdiag           Keep diagonal of matrix, othersise set to zero.
     --help               Output this message
     
 """
@@ -29,10 +30,10 @@ args['--memory'] = int(args['--memory'])
 args['--iter'] = int(args['--iter'])
 # Perform processing
 normMatrices = interactionMatrix.normaliseCountMatrices(
-    args['<infiles>'], args['<regions>'])
-# Find low bins
-normMatrices.extractLowBins(args['<mincount>'], args['--threads']) 
-# Create sub-matrices
-normMatrices.saveSubMatrices(args['<outdir>'], args['--threads'])
+    matrixList=args['<infiles>'], regionFile=args['<regions>'],
+    rmDiag=not(args['--keepdiag']))
 # Normalise sub matrices
-normMatrices.normaliseSubMatrices(args['--path'], args['--threads'])
+normMatrices.normaliseSubMatrices(
+    outDir=args['<outdir>'], minCount=args['<mincount>'], path=args['--path'],
+    threads=args['--threads'], memory=args['--memory'],
+    iterations=args['--iter'])
