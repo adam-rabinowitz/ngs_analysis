@@ -2,9 +2,8 @@
 
 Usage:
     
-    sampleFastq.py single <inFastq1> <outFastq1> <number>
-    sampleFastq.py pair <inFastq1> <inFastq2> <outFastq1> <outFastq2>
-        <number>
+    sampleFastq.py single <number> <inFastq1> <outFastq1>
+    sampleFastq.py pair <number> <inFastq1> <inFastq2> <outFastq1> <outFastq2>
     
 '''
 # Import arguments
@@ -14,20 +13,22 @@ from general_python import docopt
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')
 args['<number>'] = int(args['<number>'])
-# Create fastq object and count and check reads
-if args['single']:
-    fastq = fastqIO.readFastq(args['<inFastq1>'])
-elif args['pair']:
-    fastq = fastqIO.readFastq(args['<inFastq1>'], args['<inFastq2>'])
-count = fastq.check_names()
-print(count)
-if count < args['<number>']:
+if args['<number>'] < 1:
+    raise ValueError('Number must be positive integer')
+# Create input fastq objects objects
+parseIn = fastqIO.parseFastq(
+    fastq1=args['<inFastq1>'], fastq2=args['<inFastq2>'])
+countIn = parseIn.check_names()
+print '{} initial reads'.format(countIn)
+if countIn < args['<number>']:
     raise ValueError('Number exceeds reads in FASTQ file')
 # Sample FASTQ files
-if args['pair']:
-    fastq.sample_reads(
-        number=args['<number>'], sample=count, outFastq1=args['<outFastq1>'],
-        outFastq2 = ['<outFastq2>'])
-elif args['single']:
-    fastq.sample_reads(
-        number=args['<number>'], sample=count, outFastq1=args['<outFastq1>'])
+parseIn.sample_reads(
+    number=args['<number>'], sample=countIn, outFastq1=args['<outFastq1>'],
+    outFastq2 = args['<outFastq2>'])
+# Check output reads
+parseOut = fastqIO.parseFastq(args['<outFastq1>'], args['<outFastq2>'])
+countOut = parseOut.check_names()
+print('{} final reads'.format(countOut))
+if countOut != args['<number>']:
+    raise ValueError('Number does not equal output count')
