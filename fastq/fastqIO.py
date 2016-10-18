@@ -5,7 +5,7 @@ import os
 import random
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
-class readFastq(object):
+class parseFastq(object):
     
     ''' Class functions as an iterator to extract reads from single or paired
     FASTQ files. Classes uses multiprocessing to speed up the extraction of
@@ -27,7 +27,7 @@ class readFastq(object):
         '''
         # Store fastq files
         self.fastq_list = [fastq1]
-        if fastq2:
+        if not fastq2 is None:
             self.pair = True
             self.fastq_list.append(fastq2)
         else:
@@ -39,63 +39,6 @@ class readFastq(object):
         # Store and create additional variables
         self.shell = shell
         self.read_processes = []
-        self.write_processes = []
-    
-    def __send(self, data, conn):
-        ''' Function to send data down the end of multiprocessing pipe.
-        First checks that termination signal, None, has not been received
-        first.
-        
-        Args:
-            data - Data to send down pipe.
-            conn - End of pipe.
-        
-        Raises:
-            StopIteration: If termination signal of None is received.
-            ValueError: If anythind other than None is received.
-        
-        '''
-        # Check pipe for incoming signal
-        if conn.poll():
-            # Extract signal and process
-            recv = pend.recv()
-            if recv is None:
-                raise StopIteration('Termination signal received')
-            else:
-                raise ValueError('Unknown signal received')
-        # Else add read to pipe
-        else:
-            conn.send(data)
-    
-    def __read_processes_recv(self):
-        ''' Function to receive data from running processes.
-        
-        Returns:
-            data - A list of data received from each process.
-        
-        Raises:
-            IOError - If not all processes return data.
-            EOFError - If all processes have no data
-        
-        '''
-        # Extract signal and process
-        if self.pair:
-            data = []
-            try:
-                data.append(self.read_processes[0][1].recv())
-            except EOFError:
-                try:
-                    self.read_processes[1][1].recv()
-                    raise IOError('Differing number of data points')
-                except EOFError:
-                    raise EOFError
-            try:
-                data.append(self.read_processes[1][1].recv())
-            except EOFError:
-                raise IOError('Differing number of data points')
-        else:
-            data = data.append(self.read_processes[0][1].recv())
-        return(data)
     
     def __read_handle_create(self, fastq):
         ''' Function to create filehandle and subprocess for reading of
@@ -123,6 +66,62 @@ class readFastq(object):
             fh = open(fastq)
         # Return handle and subprocess
         return(fh, sp)
+
+    def __send(self, data, conn):
+        ''' Function to send data down the end of multiprocessing pipe.
+        First checks that termination signal, None, has not been received
+        first.
+        
+        Args:
+            data - Data to send down pipe.
+            conn - End of pipe.
+            
+        Raises:
+            StopIteration: If termination signal of None is received.
+            ValueError: If anythind other than None is received.
+       
+        '''
+        # Check pipe for incoming signal
+        if conn.poll():
+            # Extract signal and process
+            recv = pend.recv()
+            if recv is None:
+                raise StopIteration('Termination signal received')
+            else:
+                raise ValueError('Unknown signal received')
+        # Add read to connection
+        else:
+            conn.send(data)
+
+    def __read_processes_recv(self):
+        ''' Function to receive data from running processes.
+        
+        Returns:
+            data - A list of data received from each process.
+        
+        Raises:
+            IOError - If not all processes return data.
+            EOFError - If all processes have no data
+        
+        '''
+        # Extract signal and process
+        data = []
+        if self.pair:
+            try:
+                data.append(self.read_processes[0][1].recv())
+            except EOFError:
+                try:
+                    self.read_processes[1][1].recv()
+                    raise IOError('Differing number of data points')
+                except EOFError:
+                    raise EOFError
+            try:
+                data.append(self.read_processes[1][1].recv())
+            except EOFError:
+                raise IOError('Differing number of data points')
+        else:
+            data = data.append(self.read_processes[0][1].recv())
+        return(data)
     
     def __read_process_stop(self):
         ''' Function terminates the processes and closes the pipe-ends
@@ -142,69 +141,6 @@ class readFastq(object):
         # Empty process list
         self.read_processes = []
     
-    def __write_handle_create(self, fastq):
-        ''' Function to create filehandle and subprocess for writing of
-        FASTQ files.
-        
-        Args:
-            fastq(str)- Full path to fastq file.
-        
-        Returns:
-            fh - File handle for fastq file.
-            sp = gzip subprocess writing FASTQ file if self.shell=True
-                and files ends with '.gz', else None
-        
-        '''
-        # Write gzip file using shell
-        if self.shell and fastq.endswith('.gz'):
-            command = 'gzip -c > {}'.format(fastq)
-            sp = subprocess.Popen(command, shell=True,
-                stdin = subprocess.PIPE)
-            fh = sp.stdin
-        # Write file using python
-        elif fastq.endswith('.gz'):
-            sp = None
-            fh = gzip.open(fastq, 'w')
-        else:
-            sp = None
-            fh = open(fastq, 'w')
-        # Return data
-        return(fh, sp)
-    
-    def __write_process_send(self, reads):
-        ''' Function to receive data from running processes.
-        Raises:
-            IOError - If not all processes return data.
-            EOFError - If all processes have no data
-        
-        '''
-        # Process paired output files
-        if len(self.write_processes) == 2:
-            # Check input consists of two elements
-            if len(reads) != 2:
-                self.close()
-                raise IOError('Write requires two elements for paired FASTQ')
-            # Send elements to write process
-            self.write_processes[0][1].send(reads[0])
-            self.write_processes[1][1].send(reads[1])
-        # Process single reads
-        else:
-            self.write_processes[0][1](reads)
-    
-    def __write_process_stop(self):
-        ''' Function terminates the processes and closes the pipe-ends
-        listed in self.process_list and generated by self.start. Thelist 
-        self.process_list is then emptied.
-        '''
-        # Extract process and pipes
-        for process, conn in self.write_processes:
-            # Add poisin pill, join process and close pipe
-            conn.send(None)
-            process.join()
-            conn.close()
-        # Clear pipe and process list
-        self.write_processes = []
-        
     def __sample_read_process(self, fastq, entries, conn):
         ''' Function to generate a process to read FASTQ files. Extracted reads
         will be sent doen the supplied multiprocessing pipe. If self.shell is
@@ -287,19 +223,17 @@ class readFastq(object):
             conn[1].close()
             self.read_processes.append((process, conn[0]))
         # Create processes to write output reads
-        self.__create_write_processes(outFastq1, outFastq2)
-        # Extract read
         count = 0
-        while True:
-            try:
-                data = self.__read_processes_recv()
-            except EOFError:
-                break
-            count += 1
-            self.__write_process_send(data)
+        with writeFastq(outFastq1, outFastq2, self.shell) as fastqOut:
+            while True:
+                try:
+                    data = self.__read_processes_recv()
+                except EOFError:
+                    break
+                count += 1
+                fastqOut.write(data)
         # Clean up
         self.__read_process_stop()
-        self.__write_process_stop()
         # Raise error if desired number of reads not extracted
         if count != number:
             raise IOError('Not all desired reads extracted')
@@ -384,66 +318,12 @@ class readFastq(object):
         self.__read_process_stop()
         return(count)
     
-    def __write_process(self, fastq, conn):
-        ''' Function to generate a process to write FASTQ files. FASTQ reads
-        received from the multiprocessing pipe will be written to file. Receipt
-        of None will cause the termination of the process. If self.shell is True
-        then gzipped output files will be written using the gzip command in the
-        shell. Funcion takes two arguments:
-        
-        1)  fastq - Full path to the FASTQ file to be created
-        2)  pend - End of multiprocessing pipe from which reads will be
-            extracted.
-        '''
-        # Process pipes
-        conn1, conn2 = conn
-        conn1.close()
-        # Create filehandle and subprocess if required
-        fh, sp = self.__write_handle_create(fastq)
-        # Extract reads from pipe and write to file
-        while True:
-            # Extract read and check
-            read = conn2.recv()
-            if read is None:
-                break
-            if not isinstance(read, (tuple, list)):
-                break
-            # Write read to file
-            readString = '{}\n{}\n+\n{}\n'.format(read[0], read[1], read[2])
-            fh.write(readString)
-        # Close files, pipes and subprocesses
-        fh.close()
-        if sp:
-            sp.communicate()
-        conn2.close()
-    
-    def __create_write_processes(self, fastq1, fastq2):
-        # Stop any current write processes
-        self.__write_process_stop()
-        # Check directories exist
-        for fastq in [fastq1, fastq2]:
-            if fastq is None:
-                continue
-            outDir = os.path.dirname(fastq)
-            if not os.path.isdir(outDir):
-                raise IOError('Directory {} not found'.format(outDir))
-        # Create processes
-        for fastq in [fastq1, fastq2]:
-            if fastq is None:
-                continue
-            # Create, start and stroe write process
-            conn = multiprocessing.Pipe()
-            process = multiprocessing.Process(
-                target = self.__write_process,
-                args = (fastq, conn)
-            )
-            process.start()
-            conn[1].close()
-            self.write_processes.append((process, conn[0]))
-
 class writeFastq(object):
     ''' An object that uses multiprocessing processes to parralelize the
-    writing of FASTQ files.
+    writing of FASTQ files. It assumes that the fastq files to write will
+    be generated with the FastqGeneralIterator from the ??? package.
+    Therefore read names will not have a leading '@' symbol which is
+    therefore added by the write function.
     '''
     
     def __init__(self, fastq1, fastq2 = None, shell = True):
@@ -456,18 +336,22 @@ class writeFastq(object):
         
         '''
         # Store fastq files
-        self.fastq_list = [fastq1]
-        if fastq2:
-            self.fastq_list.append(fastq2)
+        if not fastq2 is None:
+            self.fastq_list = [fastq1, fastq2]
             self.pair = True
         else:
+            self.fastq_list = [fastq1]
             self.pair = False
-        # Store shell argument
+        ## Check output directories
+        for fastq in self.fastq_list:
+            outDir = os.path.dirname(fastq)
+            if not os.path.isdir(outDir):
+                raise IOError('Could not find output directory')
+        # Store shell argument and process list
         self.shell = shell
-        # Create lists to store pipes and processes
         self.process_list = []
     
-    def __write_process(self, fastq, pend):
+    def __write_process(self, fastq, conn):
         ''' Function to generate a process to write FASTQ files. FASTQ reads
         received from the multiprocessing pipe will be written to file. Receipt
         of None will cause the termination of the process. If self.shell is True
@@ -478,6 +362,8 @@ class writeFastq(object):
         2)  pend - End of multiprocessing pipe from which reads will be
             extracted.
         '''
+        # Process connections
+        conn[1].close
         # Write gzip file using shell
         if self.shell and fastq.endswith('.gz'):
             # Create process
@@ -487,23 +373,26 @@ class writeFastq(object):
             fh = sp.stdin
         # Write file using python
         elif fastq.endswith('.gz'):
+            sp = None
             fh = gzip.open(fastq, 'w')
         else:
+            sp = None
             fh = open(fastq, 'w')
         # Extract reads from pipe and write to file
         while True:
             # Extract read
-            read = pend.recv()
+            read = conn[0].recv()
             # Break loop if read is none
             if read is None:
                 break
             # Write read to file
-            readString = '{}\n{}\n+\n{}\n'.format(read[0], read[1], read[2])
+            readString = '@{}\n{}\n+\n{}\n'.format(read[0], read[1], read[2])
             fh.write(readString)
         # Close files, pipes and subprocesses
         fh.close()
-        if self.shell and fastq.endswith('.gz'):
+        if sp:
             sp.communicate()
+        conn[0].close()
     
     def start(self):
         ''' Function creates processes to write the FASTQ files listed in
@@ -517,15 +406,15 @@ class writeFastq(object):
         # Loop through fastq files
         for fastq in self.fastq_list:
             # Create pipe and process
-            pend_child, pend_parent = multiprocessing.Pipe(False)
+            conn = multiprocessing.Pipe(False)
             process = multiprocessing.Process(
                 target = self.__write_process,
-                args = (fastq, pend_child)
+                args = (fastq, conn)
             )
             process.start()
-            pend_child.close()
+            conn[0].close()
             # Store pipe end and processes
-            self.process_list.append((process, pend_parent))
+            self.process_list.append((process, conn[1]))
     
     def close(self):
         ''' Function terminates the processes and closes the pipe-ends
@@ -533,15 +422,18 @@ class writeFastq(object):
         self.process_list is then emptied.
         '''
         # Extract process and pipes
-        for process, pend in self.process_list:
+        for process, conn in self.process_list:
             # Add poisin pill, join process and close pipe
-            pend.send(None)
+            try:
+                conn.send(None)
+            except IOError:
+                pass
             process.join()
-            pend.close()
+            conn.close()
         # Clear pipe and process list
         self.process_list = []
     
-    def __pipe_send(self, read, pend):
+    def __pipe_send(self, read, conn):
         ''' Function to send a FASTQ read down a multiprocessing pipe. If
         the read does not correspond to the expected format alla active
         processes are terminated and an IOError is raised. Function takes
@@ -554,7 +446,7 @@ class writeFastq(object):
         '''
         # Add read1 to pipe
         if isinstance(read, (tuple,list)) and len(read) == 3:
-            pend.send(read)
+            conn.send(read)
         else:
             self.close()
             raise IOError('Read must be a list/tuple of three elements')
