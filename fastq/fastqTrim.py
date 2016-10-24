@@ -2,7 +2,7 @@
 ## cutadaptTrimPaired
 ################################################################################
 # Define function
-def cutadaptTrimPaired(read1In, read2In, read1Out, read2Out, quality = 20,
+def cutadapt2PassTrimPaired(read1In, read2In, read1Out, read2Out, quality = 20,
     adapter = 'AGATCGGAAGAGC', length = 25, path = 'cutadapt'
 ):
     ''' This function peforms quality trimming on paired end FASTQ files
@@ -92,6 +92,25 @@ def cutadaptTrimPaired(read1In, read2In, read1Out, read2Out, quality = 20,
     return(jointCommand)
 
 
+################################################################################
+## cutadaptTrimPaired
+################################################################################
+# Define function
+def cutadapt(read1In, read1Out, read2In = None, read2Out = None,
+    quality = 20, adapter = 'AGATCGGAAGAGC', length = 25, path = 'cutadapt'
+):
+    # Check arguments
+    if not read2In is None and read2Out is None:
+        raise IOError('Output file must be supplied for 2nd read')
+    # Create single end argument
+    if read2In is None:
+        command = '{} -a {} -o {} -e 0.1 -q {} -m {} {}'.format(
+            path, adapter, read1Out, quality, length, read1In)
+    else:
+        command = '{} -a {} -A {} -o {} -p {} -e 0.1 -q {} -m {} -O 1 {} {}'.format(
+            path, adapter, adapter, read1Out, read2Out, quality, length, 
+            read1In, read2In)
+    return command
 
 ################################################################################
 ## cutadaptTrim
