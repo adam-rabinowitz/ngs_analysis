@@ -1,6 +1,7 @@
 import collections
 import re
 import pandas as pd
+import numpy as np
 from scipy.stats import hypergeom as ssh
 import statsmodels.stats.multitest as ssm
 
@@ -343,7 +344,7 @@ def calculate_hypergeo(
 
 def calculate_hypergeo_posneg(
         allGenes, posGenes, negGenes, geneAnno, minGO = 5, maxGO = 500,
-        minGene = 3, annoGenesOnly = False
+        minGene = 3, combined = False, annoGenesOnly = False
     ):
     ''' Generates pvalues and fdr for gene ontology terms. Considers
     signficant genes with a positive and negative fold change seperately.
@@ -397,10 +398,13 @@ def calculate_hypergeo_posneg(
     else:
         background = allGenes
         sigDict = {'pos':posGenes, 'neg':negGenes}
+    # Add combined set if required
+    if combined:
+        sigDict['com'] = sigDict['pos'].union(sigDict['neg'])
     # Loop through conditions and gene annotation
     outList = []
     N = len(background)
-    for condition in ['pos', 'neg']:
+    for condition in sigDict.keys():
         sigGenes = sigDict[condition]
         n = len(sigGenes)
         for anno, annoList in geneAnno.iteritems():
@@ -410,17 +414,73 @@ def calculate_hypergeo_posneg(
             # Check number of significant genes associated with term
             k = len(sigGenes.intersection(annoSet))
             if k < minGene or minGO > K > maxGO:
-                pvalue = None
+                pvalue = np.NaN
             else:
-                pvalue = 1 - ssh.cdf(k-1, N, K, n)
+                pvalue = ssh.sf(k, N, K, n, loc=1)
             outList.append((anno, condition, N, n, K, k, pvalue))
-    # Process and return data
+    # Add false discovery rate
     outDF = pd.DataFrame(outList, columns=[
         'term', 'query', 'N','n','K','k','pval'])
     outDF = outDF.sort_values(by='pval')
-    print(outDF)
-    outDF['fdr'] = ssm.multipletests(outDF['pval'], method='fdr_bh')[1]
+    pvalues = outDF['pval'][~np.isnan(outDF['pval'])]
+    pvalueIndices = outDF['pval'].index[~outDF['pval'].apply(np.isnan)]
+    fdr =  ssm.multipletests(pvalues, method='fdr_bh')[1]
+    outDF.loc[pvalueIndices, 'fdr'] = fdr
     return(outDF)
+
+def extract_overlap_results_posneg(
+        outPrefix, gmt, results, geneCol, log2Col, statCol, statMax = 0.05
+    ):
+    # Parse gmt file
+    gmtData = parse_gmt(gmt)
+    # Create output dictionary
+    outputDict = {}
+    for term in gmtData.keys():
+        outputDict[(term, 'pos')] = []
+        outputDict[(term, 'neg')] = []
+    # Open results file and extract header
+    with open(results) as inFile:
+        # Add header to output dictionary
+        header = inFile.next().strip()
+        for term in outputDict:
+            outputDict[term].append(header)
+        # Extract line data
+        for line in inFile:
+            lineData = line.strip().split('\t')
+            # Extract and check stat data
+            stat = lineData[statCol]
+            if stat == 'NA':
+                continue
+            stat = float(stat)
+            # Loop through gmt terms and find matches
+            log2 = lineData[log2Col]
+            if log2 == 'NA':
+                continue
+            log2 = float(log2)
+            # Store genes and signifcant genes
+            gene = lineData[geneCol]
+            for term, termGenes in gmtData.items():
+                if gene in termGenes:
+                    if log2 > 0:
+                        outputDict[(term, 'pos')].append(line.strip())
+                    elif log2 < 0:
+                        outputDict[(term, 'neg')].append(line.strip())
+    # Loop through data and create output files
+    for term, change in outputDict.keys():
+        outLines = '\n'.join(outputDict[(term, change)])
+        term = re.sub('\s', '_', term)
+        outFile = '{}.{}.{}.results'.format(outPrefix, term, change)
+        with open(outFile, 'w') as out:
+            out.write(outLines)
+
+extract_overlap_results_posneg(
+    outPrefix = '/farm/scratch/rs-bio-lif/rabino01/myrtoDenaxa/geneOntology/customResults/overlapData/A_WTvsMU',
+    gmt = '/farm/scratch/rs-bio-lif/rabino01/myrtoDenaxa/geneOntology/customGmt/myrto.guilherme.ensembl.gmt',
+    results = '/farm/scratch/rs-bio-lif/rabino01/myrtoDenaxa/rnaSeqPool/myrto/DESeq/A_WTvsMU.results',
+    geneCol = 0,
+    log2Col = 3,
+    statCol = 7
+)
 
 def extract_ensembl_names(gtf):
     # Create regular expressions

@@ -4,7 +4,7 @@ Usage:
     
     resultsGOAnalysis.py <results> <geneCol> <statCol> <statMax> <gmt>
         <outFile> [--minGO=<minGO>] [--maxGO=<maxGO>] [--minGene=<minGene>]
-        [--log2Col=<log2Col>] [--onlyAnno] [--noHeader] [--sepPosNeg]
+        [--log2Col=<log2Col>] [--includeCombined] [--onlyAnno] [--noHeader]
     
 Options:
     
@@ -14,6 +14,8 @@ Options:
     --log2Col=<log2Col>  Column for log2 fold change data. Supplying this
         results in positive and negative fold change genes being considered
         seperately.
+    --includeCombined    Include combined geneset alongside positive and
+        negative genes sets. Only effectice with --log2Col argument.
     --onlyAnno           Only consider genes with annotation.
     --noHeader           Results file has no header.
     
@@ -42,7 +44,8 @@ if isinstance(args['--log2Col'], int):
     # Perform annotation
     goData = gene_conversion.calculate_hypergeo_posneg(
         allGenes=allGenes, posGenes=posGenes, negGenes=negGenes,
-        geneAnno=geneAnno, annoGenesOnly=args['--onlyAnno']
+        geneAnno=geneAnno, annoGenesOnly=args['--onlyAnno'],
+        combined=args['--includeCombined']
     )
 else:
     # Extract gene list
@@ -57,4 +60,4 @@ else:
         annoGenesOnly=args['--onlyAnno']
     )
 print(goData)
-#goDa`ta.to_csv(args['<outFile>'], sep='\t', index=False)
+goData.to_csv(args['<outFile>'], sep='\t', index=False)

@@ -7,7 +7,7 @@ import pandas as pd
 import re
 from statsmodels.nonparametric.smoothers_lowess import lowess
 
-class interaction_analysis(object):
+class analyse_interaction(object):
     
     def __init__(self, matrixList):
         # Store matrix list and associated parameters
@@ -43,7 +43,7 @@ class interaction_analysis(object):
             else:
                 self.regionList = regions
 
-    def distance_prob_generator(self, matrix):
+    def __distance_prob_generator(self, matrix):
         # Extract bin names
         with gzip.open(matrix) as inFile:
             binNames = inFile.next().strip().split()
@@ -61,7 +61,7 @@ class interaction_analysis(object):
             binDF['dist'] = dist
             yield((binNames[index], binDF))
     
-    def calc_quantile_metrics(
+    def __calc_quantile_metrics(
             self, inQueue, outQueue
         ):
         # Loop through input queue
@@ -83,7 +83,7 @@ class interaction_analysis(object):
             else:
                 quantileName = 'Q' + str(int(quantileName))
             # Extract bin data
-            for binName, binDF in self.distance_prob_generator(matrix):
+            for binName, binDF in self.__distance_prob_generator(matrix):
                 # Skip bins with low probabilites
                 if binDF['prob'].sum() < quantile:
                     continue
@@ -110,7 +110,7 @@ class interaction_analysis(object):
         processList = []
         for _ in range(threads):
             process = multiprocessing.Process(
-                target = self.calc_quantile_metrics,
+                target = self.__calc_quantile_metrics,
                 args = (inQueue, outQueue)
             )
             process.start()
@@ -142,13 +142,6 @@ class interaction_analysis(object):
         )
         output.index = np.arange(output.shape[0])
         return(output)
-
-inDir = '/farm/scratch/rs-bio-lif/rabino01/Yasu/Yasu_HiC/2kbBinData/auroraBInterphaseMitosis/'
-inFiles = os.listdir(inDir)
-matrixList = [os.path.join(inDir, x) for x in inFiles if x.endswith('.normMatrix.gz')]
-x = interaction_analysis(matrixList)
-y = x.calc_quantile(0.5, 6)
-y.to_csv(os.path.join(inDir, 'Q50.df.txt'), sep='\t', index=False)
 
 class maskMatrix(object):
     
