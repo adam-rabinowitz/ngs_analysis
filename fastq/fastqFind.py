@@ -2,7 +2,7 @@
 import re
 import os
 
-def findFastq(prefix, dirList, pair = True, gzip = True):
+def findFastq(prefix, dirList, pair = True):
     ''' A function to identify R1 and R2 FASTQ files from directories
     using a supplied filename prefix. Function returns two list
     containing the read1 and read2 files respectively. Function has
@@ -26,13 +26,8 @@ def findFastq(prefix, dirList, pair = True, gzip = True):
     read2 = []
     # Create regular expression to find files
     prefix = re.escape(prefix)
-    if gzip:
-        read1Pattern = re.compile(
-            prefix+'.*?R1(_\\d{3}){0,1}\\.fastq\\.gz$'
-        )
-    else:
-        read1Pattern = re.compile(
-            prefix+'.*?R1(_\\d{3}){0,1}\\.fastq$'
+    read1Pattern = re.compile(
+            prefix+'.*?R1(_\\d{3}){0,1}\\.fastq(\\.gz){0,1}$'
         )
     # Loop through directories to find fastq files
     for directory in dirList:
