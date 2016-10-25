@@ -50,14 +50,14 @@ columns = ['initial_reads', 'trim_loss_rate', 'aligned_reads',
     'tophat_exonic_rate', 'tophat_intragenic_rate', 'tophat_intergenic_rate',
     'tophat_duplication_rate', 'tophat_rRNA_rate']
 qcMetrics = pandas.DataFrame( columns = columns,
-    index = dirDict['rsemTranDirList'] )
+    index = dirDict['rsemDirList'] )
 
 ################################################################################
 ## Process RSEM Transcript data
 ################################################################################
 # Loop through directory and extract rsem data
 os.chdir(os.path.join(args['<indir>'], 'rsemAlign'))
-for directory in dirDict['rsemTranDirList']:
+for directory in dirDict['rsemDirList']:
     # Generate name of gene results file
     geneFileName = '%s/%s.genes.results' %(
         directory,
@@ -147,10 +147,10 @@ for directory in dirDict['tophatDirList']:
 ## Process FASTQ data
 ###############################################################################
 # Loop through directory and extract fastq data
-os.chdir(os.path.join(args['<indir>'], 'fastq'))
+os.chdir(os.path.join(args['<indir>'], 'trimFastq'))
 for directory in dirDict['fastqDirList']:
     # Generate file name of trim log file
-    trimFileName = '%s/%s_trim.log' %(
+    trimFileName = '%s/%s_cutadapt.log' %(
         directory,
         directory
     )
@@ -158,14 +158,15 @@ for directory in dirDict['fastqDirList']:
     with open(trimFileName, 'r') as trimFile:
         trimData = trimFile.read()
     # Extract trimmed reads
-    processed = re.findall('Processed reads:\s+(\d+)', trimData)
-    tooShort = re.findall('Too short reads:\s+(\d+)', trimData)
-    if len(processed) == expect and len(tooShort) == expect:
-        qcMetrics.loc[directory, 'initial_reads'] = processed[0]
-        qcMetrics.loc[directory, 'trim_loss_rate'] = sum(map(int,tooShort)) /
-            float(int(processed[0]))
-    else:
-        sys.exit('Failed to extract FASTQ trim data')
+    processed = re.search('Total read pairs processed:\\s+(\\d{1,3}(,\\d{3})*)',
+        trimData).group(1)
+    processed = re.sub(',','',processed)
+    tooShort = re.search('Pairs that were too short:\\s+(\\d{1,3}(,\\d{3})*)',
+        trimData).group(1)
+    tooShort = re.sub(',','',tooShort)
+    qcMetrics.loc[directory, 'initial_reads'] = processed
+    qcMetrics.loc[directory, 'trim_loss_rate'] = (int(tooShort) /
+            float(processed))
 
 # Save output data to file
 expectedCounts.to_csv(
