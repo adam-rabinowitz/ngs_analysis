@@ -20,20 +20,22 @@ def index(
 
 def markDuplicates(
         inBam, outBam, logFile, picardPath, javaPath = 'java',
-        removeDuplicates = False, delete = True
+        removeDuplicates = False, delete = True, memory = None
     ):
     ''' Function to mark duplicates using the picard toolkit.The BAM
     output file is also indexed. Function built for picard-tools version
     1.140 and takes 7 arguments:
     
-    1)  inBam - Input BAM file.
-    2)  outBam - Output BAM file.
-    3)  logFile - Name of file in which to same output metrics.
-    4)  picardPath - Path to picard jar file.
-    5)  javaPath - Path to java executable.
-    6)  removeDuplicates - Boolean; whether duplicates should be
-        removed from the output BAM file.
-    7)  delete - Boolean whether to delete input BAM file.
+    Args:
+        inBam (str)- Full path to input BAM file.
+        outBam (str)- Full path to output BAM file.
+        logFile (str)- Full path to output log file.
+        picardPath (str)- Path to picard jar file.
+        javaPath (str)- Path to java executable.
+        removeDuplicates (bool)- Boolean; whether duplicates should be
+            removed from the output BAM file.
+        delete (bool)- Boolean whether to delete input BAM file.
+        memory (int)- Amount of memory in java heap in gigabytes.
     
     '''
     # Process removeDuplicates option
@@ -45,6 +47,9 @@ def markDuplicates(
     duplicateCommand = [javaPath, '-jar', picardPath, 'MarkDuplicates',
         'I=' + inBam, 'O=' + outBam, 'M=' + logFile, 'ASSUME_SORTED=true',
         'CREATE_INDEX=true', removeDuplicates]
+    # Add memory
+    if memory:
+        duplicateCommand.insert(1, '-Xmx{}g'.format(memory))
     # merge command
     duplicateCommand = ' '.join(duplicateCommand)
     # delete input if requested
