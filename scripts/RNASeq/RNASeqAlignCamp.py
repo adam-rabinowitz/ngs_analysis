@@ -227,7 +227,8 @@ markDupCommand = picard.markDuplicates(
     logFile = args['mdupLog1'],
     removeDuplicates = False,
     picardPath = pmDict[('picard', 'path')],
-    delete = True
+    delete = True,
+    memory = 10
 )
 # Submit mark duplicates job ID
 markDupJobID = slurmJobs.add(
@@ -235,7 +236,7 @@ markDupJobID = slurmJobs.add(
     stdout = args['mdupLog2'],
     stderr = args['mdupLog2'],
     depend = [tophat2AlignJobID],
-    memory = 10000,
+    memory = 12,
     modules = pmDict[('picard', 'modules')]
 )
 
@@ -253,7 +254,8 @@ seqcCommand = bamQC.RNASeqC(
     outDir = args['tophatSampleDir'],
     outPrefix = args['name'],
     seqcPath = pmDict[('rnaseqc', 'path')],
-    singleEnd = args['--singleend']
+    singleEnd = args['--singleend'],
+    memory = 10
 )
 # Submit RNASeqC command
 seqcJobID = slurmJobs.add(
@@ -261,7 +263,7 @@ seqcJobID = slurmJobs.add(
     stdout = args['seqcLog'],
     stderr = args['seqcLog'],
     depend = [markDupJobID],
-    memory = 10000,
+    memory = 12,
     modules = pmDict[('rnaseqc', 'modules')]
 )
 
