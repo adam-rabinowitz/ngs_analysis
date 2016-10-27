@@ -1,17 +1,22 @@
 import re
 import pandas as pd
 
-def extract_exons_bed(gene, gtf, bed, identifier='id', source=None):
+def extract_exons_bed(
+        ident, ident_type, gtf, bed, source=None
+    ):
     # Compile regular expression for identifer
-    if identifier == 'id':
-        pattern = 'gene_id "{}"'.format(gene)
-    elif identifier == 'name':
-        pattern = 'gene_name "{}"'.format(gene)
+    if ident_type == 'gene':
+        pattern = 'gene_id "{}"'.format(ident)
+    elif ident_type == 'tran':
+        pattern = 'transcript_id "{}"'.format(ident)
+    elif ident_type == 'name':
+        pattern = 'gene_name "{}"'.format(ident)
     else:
-        raise ValueError('Identifier must be id or name')
+        raise ValueError('ident_type must be one of: gene, tran or name')
     idRegx = re.compile(pattern)
     # Compile regular expression for exon number
-    noRegx = re.compile('exon_number "(\\d+)"')
+    exonRegx = re.compile('exon_number "(\\d+)"')
+    tranRegx = re.compile('transcript_id "(ENSMUST\\d+)"')
     # Loop through output
     count = 0
     with open(gtf) as inFile, open(bed, 'w') as outFile:
@@ -25,18 +30,11 @@ def extract_exons_bed(gene, gtf, bed, identifier='id', source=None):
                 continue
             if not idRegx.search(lineData[8]):
                 continue
-            exonSearch = noRegx.search(lineData[8])
-            if exonSearch:
-                name = '{}_exon_{}_{}'.format(
-                    gene,
-                    exonSearch.group(1),
-                    lineData[1]
-                )
-            else:
-                name = '{}_exon_{}'.format(
-                    gene,
-                    lineData[1]
-                )
+            name = '{}_exon_{}_{}'.format(
+                tranRegx.search(lineData[8]).group(1),
+                exonRegx.search(lineData[8]).group(1),
+                lineData[1]
+            )
             bedLine = '{}\t{}\t{}\t{}\t0\t{}\n'.format(
                 lineData[0],
                 int(lineData[3]) - 1,
@@ -48,7 +46,7 @@ def extract_exons_bed(gene, gtf, bed, identifier='id', source=None):
             outFile.write(bedLine)
 
 def extract_tss(gtf, bed, source=None):
-    ''' Function to generate bed file listing the first transcribed
+    ''' Function to identrate bed file listing the first transcribed
     base of all transcripts in a bed file.
     
     Args:
@@ -72,8 +70,8 @@ def extract_tss(gtf, bed, source=None):
             exonNumber = noRegx.search(lineData[8]).group(1)
             if exonNumber != '1':
                 continue
-            # Extract gene id
-            geneID = idRegx.search(lineData[8]).group(1)
+            # Extract ident id
+            identID = idRegx.search(lineData[8]).group(1)
             # Find exon start
             if lineData[6] == '+':
                 tss = int(lineData[3])
@@ -88,12 +86,7 @@ def extract_tss(gtf, bed, source=None):
                 lineData[0],
                 start,
                 end,
-                geneID,
+                identID,
                 lineData[6]
             )
             outFile.write(outLine)
-
-extract_tss(
-    '/farm/scratch/rs-bio-lif/rabino01/Ascl1/genomeData/Mus_musculus.GRCm38.80.exon.gtf',
-    '/farm/scratch/rs-bio-lif/rabino01/Ascl1/genomeData/Mus_musculus.GRCm38.80.tss.bed'
-)
