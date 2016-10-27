@@ -45,6 +45,7 @@ for number, directory in enumerate(dirDict):
 # Create output data frames
 expectedCounts = pandas.DataFrame()
 tpmCounts = pandas.DataFrame()
+fpkmCounts = pandas.DataFrame()
 columns = ['initial_reads', 'trim_loss_rate', 'aligned_reads',
     'rsem_align_rate', 'rsem_expressed_genes', 'tophat_align_rate',
     'tophat_exonic_rate', 'tophat_intragenic_rate', 'tophat_intergenic_rate',
@@ -72,6 +73,7 @@ for directory in dirDict['rsemDirList']:
         )
         expectedCounts[directory] = geneData['expected_count']
         tpmCounts[directory] = geneData['TPM']
+        fpkmCounts[directory] = geneData['FPKM']
         # Store number of expressed genes
         qcMetrics.loc[directory, 'rsem_expressed_genes'] = sum(
             geneData['expected_count'] > 0)
@@ -176,6 +178,9 @@ expectedCounts.to_csv(
 tpmCounts.to_csv(
     args['<outprefix>'] + '_gene.tpm',
     sep = '\t'
+)
+fpkmCounts.to_csv(
+    args['<outprefic>'] + '_gene.fpkm'
 )
 qcMetrics.to_csv(
     args['<outprefix>'] + '.qc',
