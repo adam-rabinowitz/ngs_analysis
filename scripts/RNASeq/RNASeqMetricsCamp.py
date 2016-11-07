@@ -172,17 +172,18 @@ for directory in dirDict['fastqDirList']:
 
 # Save output data to file
 expectedCounts.to_csv(
-    args['<outprefix>'] + '_gene.exp',
+    args['<outprefix>'] + '_gene.exp.txt',
     sep = '\t'
 )
 tpmCounts.to_csv(
-    args['<outprefix>'] + '_gene.tpm',
+    args['<outprefix>'] + '_gene.tpm.txt',
     sep = '\t'
 )
 fpkmCounts.to_csv(
-    args['<outprefic>'] + '_gene.fpkm'
+    args['<outprefix>'] + '_gene.fpkm.txt',
+    sep = '\t'
 )
 qcMetrics.to_csv(
-    args['<outprefix>'] + '.qc',
+    args['<outprefix>'] + '.qc.txt',
     sep = '\t'
 )
