@@ -3,7 +3,72 @@ import multiprocessing
 import subprocess
 import os
 import random
-from Bio.SeqIO.QualityIO import FastqGeneralIterator
+
+def FastqGeneralIterator(handle): 
+    ''' Function taken from Bio.SeqIO.Quality.IO '''
+    # We need to call handle.readline() at least four times per record, 
+    # so we'll save a property look up each time: 
+    handle_readline = handle.readline 
+    
+    # Skip any text before the first record (e.g. blank lines, comments?) 
+    while True: 
+        line = handle_readline() 
+        if not line: 
+            return
+        if line[0] == "@": 
+           break 
+        if isinstance(line[0], int): 
+             raise ValueError("Is this handle in binary mode not text mode?") 
+   
+    while line: 
+        if line[0] != "@": 
+            raise ValueError( 
+                "Records in Fastq files should start with '@' character") 
+        title_line = line[1:].rstrip()
+        # Will now be at least one line of quality data - in most FASTQ files 
+        # just one line! We therefore use string concatenation (if needed) 
+        # rather using than the "".join(...) trick just in case it is multiline: 
+        seq_string = handle_readline().rstrip() 
+        # There may now be more sequence lines, or the "+" quality marker line: 
+        while True: 
+            line = handle_readline() 
+            if not line: 
+                raise ValueError("End of file without quality information.") 
+            if line[0] == "+": 
+                # The title here is optional, but if present must match! 
+                second_title = line[1:].rstrip() 
+                if second_title and second_title != title_line: 
+                    raise ValueError("Sequence and quality captions differ.") 
+                break 
+            seq_string += line.rstrip()  # removes trailing newlines 
+        seq_len = len(seq_string) 
+
+        # Will now be at least one line of quality data... 
+        quality_string = handle_readline().rstrip() 
+        # There may now be more quality data, or another sequence, or EOF 
+        while True: 
+            line = handle_readline() 
+            if not line: 
+                break
+            if line[0] == "@": 
+                # This COULD be the start of a new sequence. However, it MAY just 
+                # be a line of quality data which starts with a "@" character.  We 
+                # should be able to check this by looking at the sequence length 
+                # and the amount of quality data found so far. 
+                if len(quality_string) >= seq_len: 
+                    # We expect it to be equal if this is the start of a new record. 
+                    # If the quality data is longer, we'll raise an error below. 
+                    break 
+                    # Continue - its just some (more) quality data. 
+                quality_string += line.rstrip() 
+        if seq_len != len(quality_string): 
+            raise ValueError("Lengths of sequence and quality values differs " 
+                " for %s (%i and %i)." 
+                % (title_line, seq_len, len(quality_string))) 
+
+        # Return the record and then continue... 
+        yield (title_line, seq_string, quality_string) 
+    raise StopIteration 
 
 class parseFastq(object):
     
@@ -18,7 +83,7 @@ class parseFastq(object):
     ):
         ''' Function to initialise readFastq object. Checks FASTQ files
         exist and creates lists to store read and write processes.
-
+        
         Args:
             fastq1 (str)- Full path to fastq file.
             fastq2 (str)- Full path to paired fastq file.
@@ -66,7 +131,7 @@ class parseFastq(object):
             fh = open(fastq)
         # Return handle and subprocess
         return(fh, sp)
-
+    
     def __send(self, data, conn):
         ''' Function to send data down the end of multiprocessing pipe.
         First checks that termination signal, None, has not been received
@@ -92,7 +157,7 @@ class parseFastq(object):
         # Add read to connection
         else:
             conn.send(data)
-
+    
     def __read_processes_recv(self):
         ''' Function to receive data from running processes.
         
@@ -275,7 +340,7 @@ class parseFastq(object):
         ''' Arguments check fastq files and returns count of reads.
         For paired fastq files function checks read names match and
         the read number for fastq files in self.fastq_list are 1 and
-        2, respectively. For single afstq file function checks that the
+        2, respectively. For single fastq file function checks that the
         read number is 1.
         
         Returns:
@@ -317,6 +382,211 @@ class parseFastq(object):
         # Stop read processes and return count
         self.__read_process_stop()
         return(count)
+    
+    def __interleave_read_process(self, fastq, conn):
+        ''' Function to generate a process to read FASTQ files and extract read
+        name and number.
+        
+        Args:
+            fastq (str)- Full path to the FASTQ file to read
+            pend - End of multiprocessing pipe down which data will be sent.
+        
+        Sends:
+            name (str)- Read name
+            number (int)- Read number
+        
+        '''
+        # Process pipes
+        conn1, conn2 = conn
+        conn1.close()
+        # Loop through fastq files
+        fh, sp = self.__read_handle_create(fastq)
+        for read in FastqGeneralIterator(fh):
+            # Extract read name and number
+            name, other = read[0].split(None, 1)
+            number = other.split(':', 1)[0]
+            # Add label to read name
+            read = (
+                '{}:{} {}'.format(name, number, other),
+                read[1],
+                read[2]
+            )
+            # Send data or break iteration
+            try:
+                self.__send((name, number, read), conn2)
+            except StopIteration:
+                break
+        # Clean up
+        if sp:
+            sp.terminate()
+        fh.close()
+        conn2.close()
+    
+    def interleave_reads(
+            self, outFastq
+        ):
+        ''' Function interleaves paired fastq files into a single fastq
+        file.
+        
+        Args:
+            label (bool)- Add ':1' label to read1 name and ':2' label to
+                read2 name.
+            check_pairs (bool)- Check read pairing prior to interleaving.
+        
+        Returns:
+            count (int)- Number of paired reads processed
+        
+        '''
+        # Check paired fastq files are present
+        if not self.pair:
+            raise ValueError('Paired fastq files required')
+        # Check pairing if required
+        self.check_names()
+        # Loop through fastq files:
+        for fastq in self.fastq_list:
+            # Create pipe and process
+            conn = multiprocessing.Pipe(True)
+            process = multiprocessing.Process(
+                target = self.__interleave_read_process,
+                args = (fastq, conn)
+            )
+            process.start()
+            conn[1].close()
+            # Store process data
+            self.read_processes.append((process, conn[0]))
+        # Extract data and count reads
+        count = 0
+        with writeFastq(outFastq, None, self.shell) as fastqOut:
+            while True:
+                try:
+                    data = self.__read_processes_recv()
+                except EOFError:
+                    break
+                count += 1
+                # Check names and read number
+                if (data[0][0] != data [1][0]
+                    or data[0][1] != '1'
+                    or data[1][1] != '2'):
+                    self.__read_process_stop()
+                    raise ValueError('Read {} name error'.format(count))
+                # Write output fastq:
+                fastqOut.write(data[0][2])
+                fastqOut.write(data[1][2])
+        # Stop read processes and return count
+        self.__read_process_stop()
+        return(count)
+    
+    def __interleave_trim_read_process(
+            self, trim, fastq, conn
+        ):
+        ''' Function to trim fastq reads until after supplied sequence.
+        
+        Args:
+            fastq (str)- Full path to the FASTQ file to read.
+            trim (str)- Sequence after which sequence is trimmed.
+            pend - End of multiprocessing pipe down which data will be sent.
+        
+        Sends:
+            name (str)- Read name
+            number (int)- Read number
+        
+        '''
+        # Process pipes
+        conn1, conn2 = conn
+        conn1.close()
+        # Extract numbe for string find adjustment
+        adj = len(trim)
+        # Loop through fastq files
+        fh, sp = self.__read_handle_create(fastq)
+        for read in FastqGeneralIterator(fh):
+            # Extract read data
+            header, sequence, quality = read
+            name, description = header.split(None, 1)
+            number = description.split(':', 1)[0]
+            # Find trim sequence
+            trimLoc = sequence.find(trim)
+            if trimLoc != -1:
+                trimLoc += adj
+                sequence = sequence[:trimLoc]
+                quality = quality[:trimLoc]
+            # Send data or break iteration
+            read = (
+                '{}:{} {}'.format(name, number, description),
+                sequence,
+                quality
+            )
+            try:
+                self.__send((name, number, trimLoc, read), conn2)
+            except StopIteration:
+                break
+        # Clean up
+        if sp:
+            sp.terminate()
+        fh.close()
+        conn2.close()
+
+    def interleave_trim_reads(
+        self, trim, outFastq, minLength = 20
+    ):
+        ''' Function interleaves paired fastq files into a single fastq
+        file.
+        
+        Args:
+            label (bool)- Add ':1' label to read1 name and ':2' label to
+                read2 name.
+            check_pairs (bool)- Check read pairing prior to interleaving.
+        
+        Returns:
+            count (int)- Number of paired reads processed
+        
+        '''
+        # Check paired fastq files are present
+        if not self.pair:
+            raise ValueError('Paired fastq files required')
+        # Loop through fastq files:
+        for fastq in self.fastq_list:
+            # Create pipe and process
+            conn = multiprocessing.Pipe(True)
+            process = multiprocessing.Process(
+                target = self.__interleave_trim_read_process,
+                args = (trim, fastq, conn)
+            )
+            process.start()
+            conn[1].close()
+            # Store process data
+            self.read_processes.append((process, conn[0]))
+        # Extract data and count reads
+        metrics = {'total':0, 'short':0, 'trim1':0, 'trim2':0}
+        with writeFastq(outFastq, None, self.shell) as fastqOut:
+            while True:
+                try:
+                    data = self.__read_processes_recv()
+                except EOFError:
+                    break
+                metrics['total'] += 1
+                # Check names and read number
+                if data[0][0] != data [1][0]:
+                    self.__read_process_stop()
+                    raise ValueError('Read name mismatch')
+                if (data[0][1] != '1'
+                    or data[1][1] != '2'):
+                    self.__read_process_stop()
+                    raise ValueError('Read number error')
+                # Count and skip short reads
+                if (-1 <data[0][2] < minLength
+                    or -1 < data[1][2] < minLength):
+                    metrics['short'] += 1
+                    continue
+                # Write output fastq
+                if data[0][2] != -1:
+                    metrics['trim1'] += 1
+                if data[1][2] != -1:
+                    metrics['trim2'] += 1
+                fastqOut.write(data[0][3])
+                fastqOut.write(data[1][3])
+        # Stop read processes and return count
+        self.__read_process_stop()
+        return(metrics)
     
 class writeFastq(object):
     ''' An object that uses multiprocessing processes to parralelize the
@@ -435,7 +705,7 @@ class writeFastq(object):
     
     def __pipe_send(self, read, conn):
         ''' Function to send a FASTQ read down a multiprocessing pipe. If
-        the read does not correspond to the expected format alla active
+        the read does not correspond to the expected format all active
         processes are terminated and an IOError is raised. Function takes
         two arguments:
         
