@@ -9,7 +9,7 @@ import argparse
 import itertools
 import os
 # Import custom modules
-from ngs_python.fastq import fastqFind, fastqMerge, fastqAlign
+from ngs_python.fastq import fastqFind, fastqAlign, fastqIO
 from ngs_python.bam import samtools
 from ngs_python.structure import alignedPair, fragendPair
 # Create parser
@@ -72,16 +72,18 @@ args.outFrags = args.outDir + args.sampleName + ".fragLigations.gz"
 ## Process FASTQ files and perform alignment
 ###############################################################################
 # Extract fastq file names
-args.read1, args.read2 = fastqFind.findIlluminaFastq(prefix = args.fastqPrefix,
+args.read1, args.read2 = fastqFind.findFastq(prefix = args.fastqPrefix,
     dirList = args.fastqDir.split(','), pair = True)
+if len(args.read1) > 1 or len(args.read2) > 1:
+    raise NotImplemented('Multiple FASTQ file input not implemented')
 # Trim and merge fastq files
-trimMetrics = fastqMerge.mergeLabelTrimPair(
-    fastqIn1 = args.read1,
-    fastqIn2 = args.read2,
-    fastqOut = args.outFastq,
-    trimSeq = args.cutSite,
-    label1 = ':1',
-    label2 = ':2',
+pf = fastqIO.parseFastq(
+    fastq1 = args.read1[0],
+    fastq2 = args.read2[0]
+)
+trimMetrics = pf.interleave_trim_reads(
+    outFastq = args.outFastq,
+    trim = args.cutSite,
     minLength = args.minLength
 )
 # Print trim metrics
