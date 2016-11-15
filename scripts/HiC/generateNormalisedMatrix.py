@@ -31,4 +31,4 @@ normMatrices = interactionMatrix.normaliseCountMatrices(
 normMatrices.iceNormalisation(
     outDir=args['<outdir>'], minCount=args['<mincount>'],
     threads=args['--threads'], max_iter=args['--iter'],
-    rmDiag=not(args['--keepdiag']), min_diff=1e-12)
+    rmDiag=not(args['--keepdiag']), max_dev=1e-12)
