@@ -1,5 +1,4 @@
 from Bio import SeqIO
-from general_python import toolbox
 import re
 
 def extract(fasta, chrom, start = None, end = None):
@@ -13,9 +12,12 @@ def extract(fasta, chrom, start = None, end = None):
     
     '''
     # Check arguments
-    toolbox.checkArg(chrom, 'str')
-    toolbox.checkArg(start, 'int')
-    toolbox.checkArg(end, 'int')
+    if not isinstance(chrom, str):
+        raise TypeError('chrom must be a string')
+    if start and not isinstance(start, int):
+        raise TypeError('start must be an integer')
+    if end and not isinstance(end, int):
+        raise TypeError('end must be an integer')
     # Create iterator and loop through sequences
     for sequence in SeqIO.parse(open(fasta), 'fasta'):
         # Find chromosome within fasta file
@@ -32,7 +34,7 @@ def extract(fasta, chrom, start = None, end = None):
             if end < start:
                 raise ValueError('End preceeds start')
             # Extract and return sequence
-            return(sequence.seq[start-1:end].tostring())
+            return(str(sequence.seq[start-1:end]))
     # Raise error if chromosome not found
     raise ValueError('Chromosome not found in FASTA file')
 
