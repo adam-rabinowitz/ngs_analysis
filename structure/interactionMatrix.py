@@ -379,41 +379,60 @@ class normaliseCountMatrices(object):
         ):
         # Extract matrices and output directory from index
         for matrix in iter(inQueue.get, None):
-            # Create variable to store files
-            fileList = []
             # Extract sample name
             nameSearch = re.search('([^/]*).countMatrix.gz$', matrix)
             if not nameSearch:
                 raise ValueError('Unrecognised matrix file name')
             sampleName = nameSearch.group(1)
-            # Read in counts and rm diagonal if required
-            counts = np.loadtxt(
-                matrix, dtype = np.uint32, delimiter = '\t', skiprows = 1)
-            if rmDiag:
-                np.fill_diagonal(counts, 0)
-            # Loop through regions
+            # Extract bin names
+            with gzip.open(matrix) as inFile:
+                inHeader = np.array(inFile.next().strip().split('\t'))
+            # Create variable to store files and read in counts
+            fileList = []
+            counts = np.loadtxt(matrix, dtype = np.uint32, delimiter = '\t',
+                skiprows = 1)
+            # Open log file and loop through regions
             for region, indices in self.regionIndices.items():
-                # Extract bins to be excluded from matrix
-                rLowBins = lowBins[region]
-                if len(rLowBins) != len(indices):
-                    raise ValueError('Number of bins uncertain')
-                # Remove low bins and diagonal, if not required
-                regionCounts = counts[indices,:][:,indices]
-                regionCounts[rLowBins,:] = 0
-                regionCounts[:,rLowBins] = 0
-                # Generate output file and save sub matrix
+                # Create output file names
+                outSuffix = os.path.join(outDir, '{}.{}.{}'.format(
+                    sampleName, region, minCount))
                 if rmDiag:
-                    outFile = '{}.{}.{}.noself.countMatrix.gz'.format(
-                        sampleName, region, minCount)
-                else:
-                    outFile = '{}.{}.{}.countMatrix.gz'.format(
-                        sampleName, region, self.minCount)
-                outPath = os.path.join(outDir, outFile)
-                header = '\t'.join(self.binNames[indices])
-                np.savetxt(outPath, regionCounts, fmt='%.0f', delimiter='\t',
-                    header=header, comments='')
-                # Store output file
-                fileList.append(outPath)
+                    outSuffix += '.noself'
+                matrixFile = outSuffix + '.countMatrix.gz'
+                logFile = outSuffix + '.log'
+                # Extract sub matrix and extract metrics
+                regionCounts = counts[np.ix_(indices, indices)]
+                binNumber = len(indices)
+                totalCounts = regionCounts.sum()
+                # Count self ligation bins and remove if required
+                selfLigationCount = np.diag(regionCounts).sum()
+                if rmDiag:
+                    np.fill_diagonal(regionCounts, 0)
+                # Extract bins to be excluded from matrix
+                regionLowBins = lowBins[region]
+                if len(regionLowBins) != len(indices):
+                    raise ValueError('Number of bins uncertain')
+                regionCounts[regionLowBins,:] = 0
+                regionCounts[:,regionLowBins] = 0
+                lowBinCount = np.sum(regionLowBins)
+                # Save output matrix 
+                outHeader = '\t'.join(inHeader[indices])
+                np.savetxt(matrixFile, regionCounts, fmt='%d',
+                    delimiter='\t', header=outHeader, comments='')
+                fileList.append(matrixFile)
+                # Add data to log file
+                with open(logFile, 'w') as outFile:
+                    outFile.write('Grouped samples:\n')
+                    for m in self.matrixList:
+                        outFile.write('  {}\n'.format(m))
+                    outFile.write('\nMatrix statistics:\n')
+                    outFile.write('  total counts: {}\n'.format(totalCounts))
+                    outFile.write('  bin count: {}\n'.format(binNumber))
+                    outFile.write('  low bins: {}\n'.format(lowBinCount))
+                    outFile.write('  self-ligation frequency: {:.2f}'\
+                        '\n'.format(float(selfLigationCount) / totalCounts))
+                    outFile.write('  remove self-ligation: {}\n'.format(
+                        rmDiag))
             # Return file list
             outQueue.put(fileList)
     
@@ -463,8 +482,38 @@ class normaliseCountMatrices(object):
         # Store sub matrices
         return(subMatrixList)
     
+    def __calculateBias(
+        self, matrix, max_iter, max_dev
+    ):
+        # Check matrix is symetrical
+        m, n = matrix.shape
+        if m != n:
+            raise ValueError('Matrix must be square')
+        if not np.all(matrix == matrix.T):
+            raise ValueError('Matrix values must be symetrical')
+        # Set initial variable for bias calculation
+        bias = np.ones((m, 1), dtype=np.float64)
+        nonzero = np.where(matrix.sum(axis=0) > 0)[0]
+        # Reiteratively correct matrix
+        for it in xrange(max_iter):
+            # Extract current column sums
+            adjColSums = (matrix / (bias * bias.T)).sum(axis=0)
+            # Calculate deviation and halt iterations if acceptable
+            dev = np.abs(adjColSums[nonzero] - 1).max()
+            if dev <= max_dev:
+                break
+            # Adjust bias based on columns sums
+            adjBias = np.sqrt(adjColSums)
+            adjBias[adjBias == 0] = 1
+            bias *= adjBias.reshape((m, 1))
+        # Check normalisation has worked
+        if dev > max_dev:
+            raise ValueError('max deviation of {} is too high'.format(dev))
+        # Return bias
+        return(bias)
+    
     def __iceNormalisationProcess(
-            self, max_iter, min_diff, inQueue
+            self, max_iter, max_dev, inQueue
         ):
         # Extract matrices and output directory from index
         for matrix in iter(inQueue.get, None):
@@ -478,49 +527,17 @@ class normaliseCountMatrices(object):
             # Open input matrix as integer array and check symetry
             inMatrix = np.loadtxt(matrix, dtype=np.float64, skiprows=1,
                 delimiter='\t')
-            m, n = inMatrix.shape
-            if m != n:
-                raise ValueError('Matrix must have equal number of columns and rows')
-            if not np.all(inMatrix == inMatrix.T):
-                raise ValueError('Matrix must be symetrical')
-            # Calculate the desired sum for the output matrix
-            desired_sum = (inMatrix.sum(axis=0) > 0).sum()
-            # Set initial variable for bias calculation
-            bias = np.ones((m, 1), dtype=np.float64)
-            old_dbias = bias.copy()
-            # Reiteratively calculate bias
-            for it in xrange(max_iter):
-                # Calculate bias
-                dbias = inMatrix.sum(axis=0).reshape((m, 1))
-                # Adjust to remove numerical instabilities
-                dbias /= dbias[dbias != 0].mean()
-                dbias[dbias == 0] = 1
-                bias *= dbias
-                # Apply bias to matrix
-                inMatrix /= dbias
-                inMatrix /= dbias.T
-                # Break loop if increment if convergence reached
-                if np.abs(old_dbias - dbias).sum() < min_diff:
-                    break
-                # Copy bias
-                old_dbias = dbias.copy()
-            # Adjust and save calculated bias values
-            bias *= np.sqrt(inMatrix.sum() / desired_sum)
-            np.savetxt(biasFile, bias, '%.8f', '\t')
-            # Calculate normalised matrix from stored values for consistency
-            bias = np.loadtxt(biasFile, dtype=np.float64, delimiter='\t')
-            bias = bias.reshape((m, 1))
-            inMatrix = np.loadtxt(matrix, dtype=np.float64, skiprows=1,
-                delimiter='\t')
+            bias = self.__calculateBias(inMatrix, max_iter, max_dev)
+            np.savetxt(biasFile, bias,  delimiter='\t')
             # Generate normalised matrix and save data
-            inMatrix /= bias
-            inMatrix /= bias.T
-            np.savetxt(normMatrix, inMatrix, '%.8f', '\t',
+            adjMatrix = inMatrix / (bias * bias.T)
+            adjMatrix = np.round(adjMatrix, 9)
+            np.savetxt(normMatrix, adjMatrix, '%.9f', delimiter='\t',
                 header=header, comments='')
     
     def iceNormalisation(
-            self, outDir, minCount, rmDiag, threads = 1, max_iter = 1000,
-            min_diff = 1e-12
+            self, outDir, minCount, rmDiag, threads = 1, max_iter = 10000,
+            max_dev = 1e-12
         ):
         # Check arguments
         if not os.path.isdir(outDir):
@@ -542,7 +559,7 @@ class normaliseCountMatrices(object):
         for _ in range(threads):
             process = multiprocessing.Process(
                 target = self.__iceNormalisationProcess,
-                args = (max_iter, min_diff, inQueue)
+                args = (max_iter, max_dev, inQueue)
             )
             process.start()
             processList.append(process)
