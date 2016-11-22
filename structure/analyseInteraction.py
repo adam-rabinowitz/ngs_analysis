@@ -6,6 +6,8 @@ import os
 import pandas as pd
 import re
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from statsmodels.sandbox.stats.multicomp import multipletests
+from scipy.stats import mannwhitneyu
 
 class analyse_interaction(object):
     
@@ -183,7 +185,6 @@ class maskMatrix(object):
         self.distMatrix = ma.masked_array(distMatrix, mask = maskMatrix)
     
     def upDown(self, array, index):
-        ''' Returns distance-paired upstream and downstream arrays.'''
         if index == 0:
             up = ma.masked_array([], mask=np.array([],dtype=bool))
         else:
@@ -270,3 +271,228 @@ class maskMatrix(object):
         dist = self.distMatrix[~self.distMatrix.mask]
         # Return data
         return(np.array([dist, prob]).T)
+
+class compare_interaction(object):
+
+    def __init__(self, matrixDict):
+        # Store input dictionary and conditions
+        if len(matrixDict) != 2:
+            raise ValueError('Dictionary of two conditions must be supplied')
+        # Check each condition has at least one matrix
+        for paths in matrixDict.values():
+            if not isinstance(paths, list):
+                raise TypeError('Dictiuonary values must be lists')
+            if len(paths) == 0:
+                raise ValueError('Must be one or matrix for each condition')
+            for p in paths:
+                if not os.path.isfile(p):
+                    raise IOError('File {} not found'.format(p))
+        # Store data
+        self.conditions = matrixDict.keys()
+        self.matrixDict = matrixDict
+    
+    def __prob_matrix(self, path):
+        # Read in matrix
+        matrix = np.loadtxt(path, delimiter='\t', skiprows=1,
+            dtype=np.float64)
+        # Check matrix
+        m, n = matrix.shape
+        if m != n:
+            raise ValueError('{} is not square'.format(path))
+        if not np.alltrue(matrix == matrix.T):
+            raise ValueError('{} is not symetrical'.format(path))
+        # Return matrix
+        return(matrix)
+    
+    def __dist_matrix(self, path):
+        # Extract bin names
+        with gzip.open(path) as inFile:
+            binNames = inFile.next().strip().split('\t')
+        # Extract and check bin data
+        binData = np.array([re.split('[:-]', x) for x in binNames])
+        if not np.alltrue(binData.T[0] == binData.T[0][1]):
+            print(binData.T)
+            raise ValueError('{} is not from single chromosome'.format(path))
+        # Generate distance matrix
+        centres = ((binData.T[1].astype(np.int64) +
+            binData.T[2].astype(np.int64)) / 2).reshape(len(binData), 1)
+        dist = abs(centres - centres.T)
+        return(dist)
+    
+    def __prob_dist_matrix(self, path):
+        probMatrix = self.__prob_matrix(path)
+        distMatrix = self.__dist_matrix(path)
+        if probMatrix.shape != distMatrix.shape:
+            raise ValueError('{} has ambiguos bin numbers'.format('path'))
+        return((probMatrix, distMatrix))
+    
+    def __extract_dist_prob(self):
+        # Create output dataframe
+        outDF = pd.DataFrame(columns = ['cond', 'dist', 'prob'])
+        # Extract probabilities for input matrices
+        for condition in self.matrixDict:
+            for path in self.matrixDict[condition]:
+                # Create matrices
+                probMatrix, distMatrix = self.__prob_dist_matrix(path)
+                # Extract data from lower triangles
+                trilIndices = np.tril_indices(probMatrix.shape[0])
+                probData = probMatrix[trilIndices]
+                distData = distMatrix[trilIndices]
+                # Create dataframe and concat to output
+                pathDF = pd.DataFrame({
+                    'cond' : pd.Series([condition] * len(probData)),
+                    'dist' : distData,
+                    'prob' : probData
+                }, columns = ['cond', 'dist', 'prob'])
+                outDF = pd.concat((outDF, pathDF), axis=0)
+        return(outDF)
+    
+    def calculate_distance_difference(self, rmzero=True, minvalues=10):
+        # Extract distances for input matrices
+        distProb = self.__extract_dist_prob()
+        splitDist = distProb.groupby('dist')
+        # Create output dataframe
+        colNames = [
+            '{}_no'.format(self.conditions[0]),
+            '{}_no'.format(self.conditions[1]),
+            '{}_mean'.format(self.conditions[0]),
+            '{}_mean'.format(self.conditions[1]),
+            'pvalue',
+            'fdr'
+        ]
+        outDF = pd.DataFrame(
+            columns = colNames, index = splitDist.groups.keys())
+        outDF = outDF.sort_index()
+        # Loop through data and calculate results
+        for dist, data in splitDist:
+            # Remove zero values
+            if rmzero:
+                data = data[data['prob'] > 0]
+            # Extract group data for first sample
+            cond1 = self.conditions[0]
+            prob1 = data['prob'][data['cond'] == cond1]
+            outDF.loc[dist, cond1 + '_no'] = prob1.size
+            outDF.loc[dist, cond1 + '_mean'] = prob1.mean()
+            # Extract group data for second sample
+            cond2 = self.conditions[1]
+            prob2 = data['prob'][data['cond'] == cond2]
+            outDF.loc[dist, cond2 + '_no'] = prob2.size
+            outDF.loc[dist, cond2 + '_mean'] = prob2.mean()
+            # Calculate p-value
+            if prob1.size >= minvalues and prob2.size >= minvalues:
+                outDF.loc[dist, 'pvalue'] = mannwhitneyu(prob1, prob2)[1]
+        # Sort data, add fdr and return
+        pvalueIndex = outDF.index[~outDF['pvalue'].isnull()]
+        outDF.loc[pvalueIndex, 'fdr'] = multipletests(
+            outDF.loc[pvalueIndex, 'pvalue'], method='fdr_bh')[1]
+        return(outDF)
+    
+    def __extract_quantile_distance(
+            self, quantile
+        ):
+        # Create output dataframe
+        outDF = pd.DataFrame(columns=['cond', 'quan', 'dist'])
+        # Loop through input queue
+        for condition in self.matrixDict:
+            for path in self.matrixDict[condition]:
+                # Create matrices
+                probMatrix, distMatrix = self.__prob_dist_matrix(path)
+                dfList = []
+                # Loop through columns
+                for dist, prob in zip(distMatrix.T, probMatrix.T):
+                    # Create dataframe listing distances
+                    distDF = pd.DataFrame()
+                    distDF['dist'] = dist
+                    distDF['prob'] = prob
+                    if distDF['prob'].sum() == 0:
+                        continue
+                    if not 1.05 > distDF['prob'].sum() > 0.95:
+                        raise ValueError('Columns must add to 0 or ~1')
+                    # Sort by distance and find cumulative frequence
+                    distDF.sort_values('dist', inplace=True)
+                    distDF['cumsum'] = distDF['prob'].cumsum()
+                    # Create dataframe to store data
+                    quantDF = pd.DataFrame(index = quantile)
+                    quantDF['cond'] = [condition] * len(quantile)
+                    quantDF['quan'] = quantile
+                    # Calculate quantile distances and store
+                    for q in quantile:
+                        subsetDF = distDF[distDF['cumsum'] >= q]
+                        quantDF.loc[q, 'dist'] = subsetDF['dist'].iloc[0]
+                    dfList.append(quantDF)
+                # Append results to output
+                matrixDF = pd.concat(dfList, axis=0)
+                outDF = pd.concat((outDF, matrixDF), axis=0)
+        # Return data
+        return(outDF)
+    
+    def calculate_quantile_pvalue(
+            self, quantile, minvalues=10
+        ):
+        # Check arguments
+        if isinstance(quantile, float):
+            quantile = [quantile]
+        elif isinstance(quantile, list):
+            for q in quantile:
+                if not isinstance(q, float):
+                    raise TypeError('quantile list must contain floats')
+        else:
+            raise TypeError('quantile must be float or list of floats')
+        # Create output dataframe
+        colNames = [
+            '{}_no'.format(self.conditions[0]),
+            '{}_no'.format(self.conditions[1]),
+            '{}_mean'.format(self.conditions[0]),
+            '{}_mean'.format(self.conditions[1]),
+            'pvalue',
+            'fdr'
+        ]
+        outDF = pd.DataFrame(index=quantile, columns=colNames)
+        outDF = outDF.sort_index()
+        # Extract quantile distance data
+        quantData = self.__extract_quantile_distance(quantile)
+        splitQuant = quantData.groupby('quan')
+        for q, data in splitQuant:
+            # Extract group data for first sample
+            cond1 = self.conditions[0]
+            dist1 = data['dist'][data['cond'] == cond1]
+            outDF.loc[q, cond1 + '_no'] = dist1.size
+            outDF.loc[q, cond1 + '_mean'] = dist1.mean()
+            # Extract group data for second sample
+            cond2 = self.conditions[1]
+            dist2 = data['dist'][data['cond'] == cond2]
+            outDF.loc[q, cond2 + '_no'] = dist2.size
+            outDF.loc[q, cond2 + '_mean'] = dist2.mean()
+            # Calculate p-value
+            if dist1.size >= minvalues and dist2.size >= minvalues:
+                outDF.loc[q, 'pvalue'] = mannwhitneyu(dist1, dist2)[1]
+        # Add fdr and return
+        pvalueIndex = outDF.index[~outDF['pvalue'].isnull()]
+        outDF.loc[pvalueIndex, 'fdr'] = multipletests(
+            outDF.loc[pvalueIndex, 'pvalue'], method='fdr_bh')[1]
+        return(outDF)
+
+
+
+x = compare_interaction({
+    'A' : [
+        '/camp/stp/babs/working/rabinoa/yasu/mtrData/individualChrArmNormMatrices/NGS-13147.2000.III_ArmR.500.noself.normMatrix.gz',
+        '/camp/stp/babs/working/rabinoa/yasu/mtrData/individualChrArmNormMatrices/NGS-13136.2000.III_ArmR.500.noself.normMatrix.gz'
+    ],
+    'B' : [
+        '/camp/stp/babs/working/rabinoa/yasu/mtrData/individualChrArmNormMatrices/NGS-13146.2000.III_ArmR.500.noself.normMatrix.gz',
+        '/camp/stp/babs/working/rabinoa/yasu/mtrData/individualChrArmNormMatrices/NGS-13138.2000.III_ArmR.500.noself.normMatrix.gz'
+    ]
+})
+y = x.calculate_distance_difference()
+print(y)
+
+
+
+
+
+
+
+
+
+
