@@ -4,14 +4,13 @@ import pandas as pd
 import multiprocessing
 import collections
 
-class coverage(object):
+class single_coverage(object):
 
     def __init__(self, bam):
         self.bam = bam
         bamFile = pysam.AlignmentFile(bam)
         self.length = collections.OrderedDict(
             zip(bamFile.references, bamFile.lengths))
-        self.name = {bamFile.gettid(x):x for x in bamFile.references}
         bamFile.close()
 
     def check_intervals(self, intervals):
@@ -40,10 +39,18 @@ class coverage(object):
                 raise ValueError('Invalid interval: {}'.format(intName))
 
     def __extract_intervals(
-            self, intervals, conn_out, map_quality, remove_dup
+            self, intervals, conn_out, map_quality, remove_dup,
+            remove_secondary
         ):
         # Process connections
         conn_out[0].close()
+        # Set filter flag to skip unmapped and failed reads
+        filter_flag = 516
+        # Update flag to skip duplicate and secondary reads, if requested
+        if remove_dup:
+            filter_flag += 1024
+        if remove_secondary:
+            filter_flag += 256
         # Open bam file and loop through intervals
         bamFile = pysam.AlignmentFile(self.bam)
         for interval in intervals:
@@ -51,16 +58,12 @@ class coverage(object):
             conn_out[1].send(interval)
             chrom, start, end = interval
             # Extract reads for interval
-            read = None
             for read in bamFile.fetch(chrom, start, end):
-                # Skip unmapped reads
-                if read.is_unmapped:
+                # Skip unmapped, failed, duplicate and secondary reads
+                if read.flag & filter_flag:
                     continue
                 # Skip reads below specified mapping quality
                 if read.mapping_quality < map_quality:
-                    continue
-                # Remove duplicate reads if requested
-                if remove_dup and read.is_duplicate:
                     continue
                 # Extract blocks for read
                 for block_start, block_end in read.get_blocks():
@@ -79,7 +82,8 @@ class coverage(object):
         conn_out[1].close()
     
     def __coverage_change(
-            self, intervals, conn_out, map_quality, remove_dup
+            self, intervals, conn_out, map_quality, remove_dup,
+            remove_secondary
         ):
         # Process output connection and create input connection
         conn_out[0].close()
@@ -87,7 +91,8 @@ class coverage(object):
         # Start process extracting intervals
         process = multiprocessing.Process(
             target = self.__extract_intervals,
-            args = (intervals, conn_in, map_quality, remove_dup)
+            args = (intervals, conn_in, map_quality, remove_dup,
+                remove_secondary)
         )
         process.start()
         conn_in[1].close()
@@ -116,6 +121,7 @@ class coverage(object):
     
     def __coverage_array(
             self, intervals, conn_out, map_quality, remove_dup,
+            remove_secondary
         ):
         # Proces output connection and create input connection
         conn_out[0].close()
@@ -123,7 +129,8 @@ class coverage(object):
         # Start process extracting coverage change
         process = multiprocessing.Process(
             target = self.__coverage_change,
-            args = (intervals, conn_in, map_quality, remove_dup)
+            args = (intervals, conn_in, map_quality, remove_dup,
+                remove_secondary)
         )
         process.start()
         conn_in[1].close()
@@ -149,18 +156,26 @@ class coverage(object):
         conn_out[1].close()
     
     def __coverage_array_generator(
-            self, intervals, map_quality = 0, remove_dup = False
+            self, intervals, map_quality = 0, remove_dup = False,
+            remove_secondary = False, check_intervals = True
         ):
         # Check arguments
-        if not isinstance(map_quality, int) or map_quality < 0:
-            raise ValueError('map_qulaity must be non-negative integer')
+        if not isinstance(map_quality, int):
+            raise TypeError('map_quality must be integer')
+        if map_quality < 0:
+            raise ValueError('map_quality must be non-negative')
         if not isinstance(remove_dup, bool):
-            raise ValueError('remove_dup must be a bool')
+            raise TypeError('remove_dup must be a bool')
+        if not isinstance(remove_secondary, bool):
+            raise TypeError('remove_secondary must be a bool')
+        if not isinstance(check_intervals, bool):
+            raise TypeError('check_intervals must be a bool')
         # Start process building coverage
         conn_in = multiprocessing.Pipe(False)
         process = multiprocessing.Process(
             target = self.__coverage_array,
-            args = (intervals, conn_in, map_quality, remove_dup)
+            args = (intervals, conn_in, map_quality, remove_dup,
+                remove_secondary)
         )
         process.start()
         conn_in[1].close()
@@ -223,17 +238,16 @@ class coverage(object):
     
     def mean_coverage(
             self, intervals, map_quality = 0, remove_dup = False,
-            check_intervals = True
+            remove_secondary = False, check_intervals = True
         ):
-        # Check intervals
-        if check_intervals:
-            self.check_intervals(intervals)
-        # Create output list
-        meanList = []
+        # Create output series
+        names = ['{}:{}-{}'.format(x[0], x[1], x[2]) for x in intervals]
+        outSeries = pd.Series(index = names)
         # Create generator and loop through arrays
-        for interval, array in self.__coverage_array_generator(
-                intervals, map_quality, remove_dup
-            ):
+        for count, (interval, array) in enumerate(self.__coverage_array_generator(
+                intervals, map_quality, remove_dup, remove_secondary,
+                check_intervals
+            )):
             # Calculate lengths and coverage
             lengths = np.diff(array[:,0])
             coverage = np.cumsum(array[:,1])
@@ -241,6 +255,104 @@ class coverage(object):
                 raise ValueError('Error in coverage calculations')
             # Calculate mean coverage
             meanCov = np.average(coverage[:-1], weights=lengths)
-            meanList.append(meanCov)
+            outSeries[names[count]] = meanCov
         # Clean up processes and pipes
-        return(meanList)
+        return(outSeries)
+
+class multiple_coverage(object):
+    
+    def __init__(self, bamList):
+        ''' Function to initialise multiple_coverage object. Object
+        functions to perform coverage calculations across BAM files.
+        All BAM files must have reference sequences of the same name
+        and length.
+        
+        Args:
+            bamList (iter)- Iterable returning path to BAM file.
+        
+        Raises:
+            ValueError - If reference sequences within BAM files
+                do not have the same names and lengths.
+        
+        '''
+        # Check bams contain identical reference sequence
+        for count, bam in enumerate(bamList):
+            bamCov = single_coverage(bam)
+            if count:
+                if bamCov.length != reference:
+                    raise ValueError('Chromosomes in BAM files vary')
+            else:
+                reference = bamCov.length
+        # Store bam list and lengths
+        self.length = reference
+        self.bamList = bamList
+    
+    def mean_coverage(
+        self, intervals, map_quality=0, remove_dup=False
+    ):
+        ''' Function to return mean coverage across all intervals
+        within matched BAM files.
+        
+        Args:
+            intervals - Iterable of intervals where each element consists
+                of a string and two integers specifying chromosome name and
+                chromosome start and end, respectively.
+            map_quality (int)- Minimum mapping quality for reads.
+            remove_dup (bool)- Remove duplicate reads.
+        
+        Returns:
+            outDF - Mean coverage of all intervals in all BAM files.
+        
+        '''
+        # Check intervals
+        for count, bam in enumerate(self.bamList):
+            # Generate single coverage object
+            bamCov = single_coverage(bam)
+            # Check intervals for first bam and build output
+            if count == 0:
+                bamCov.check_intervals(intervals)
+                names = ['{}:{}-{}'.format(*x) for x in intervals]
+                outDF = pd.DataFrame(index=names, columns=self.bamList)
+            # Add coverage to output
+            outDF[bam] = bamCov.mean_coverage(
+                intervals=intervals, map_quality=map_quality,
+                remove_dup=remove_dup, check_intervals=False)
+        # Return data
+        return(outDF)
+    
+    def mean_coverage_cor(
+        self, intervals, map_quality=0, remove_dup=False, method='pearson',
+        min_coverage=0
+    ):
+        ''' Function to calculate correlation between mean coverage of
+        intervals within BAM files.
+        
+        Args:
+            intervals - Iterable of intervals where each element consists
+                of a string and two integers specifying chromosome name and
+                chromosome start and end, respectively.
+            map_quality (int)- Minimum mapping quality for reads.
+            remove_dup (bool)- Remove duplicate reads.
+            method (str)- Method for correlation calculation.
+            min_coverage (int)- Minimum coverage of interval, across all BAM
+                files, for inclusion in correlation calculation.
+        
+        Returns:
+            cor - Correlation matrix for bamFiles.
+            meanCov - Mean coverage of all intervals in all BAM files.
+        
+        '''
+        # Check arguments
+        if not isinstance(return_filtered, bool):
+            raise TypeError('return_filtered must be bool')
+        methods = ('pearson', 'kendall', 'spearman')
+        if method not in methods:
+            raise ValueError('method but be one of: {}.'.format(
+                ', '.join(methods)))
+        # Extract mean coverage and remove low rows
+        meanCov = self.mean_coverage(
+            intervals=intervals, map_quality=map_quality,
+            remove_dup=remove_dup)
+        # Perform correlation between remaining points and return
+        cor = filtCov.corr(method)
+        return((cor, meanCov))
