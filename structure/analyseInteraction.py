@@ -5,6 +5,7 @@ import numpy as np
 import os
 import pandas as pd
 import re
+import itertools
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from statsmodels.sandbox.stats.multicomp import multipletests
 from scipy.stats import mannwhitneyu
@@ -272,35 +273,104 @@ class maskMatrix(object):
         # Return data
         return(np.array([dist, prob]).T)
 
-class compare_interaction(object):
-
-    def __init__(self, matrixDict):
-        # Store input dictionary and conditions
-        if len(matrixDict) != 2:
-            raise ValueError('Dictionary of two conditions must be supplied')
-        # Check each condition has at least one matrix
-        for paths in matrixDict.values():
-            if not isinstance(paths, list):
-                raise TypeError('Dictiuonary values must be lists')
-            if len(paths) == 0:
-                raise ValueError('Must be one or matrix for each condition')
-            for p in paths:
-                if not os.path.isfile(p):
-                    raise IOError('File {} not found'.format(p))
-        # Store data
-        self.conditions = matrixDict.keys()
-        self.matrixDict = matrixDict
+class compare_paired_matrices(object):
     
+    def __init__(
+            self, samples1, samples2, conditions, indir,
+            suffix = 'normMatrix.gz'
+        ):
+        # Check arguments
+        if not isinstance(samples1, list) or len(samples1) == 0:
+            raise TypeError('prefix1 must be a list of length >= 1')
+        if not isinstance(samples2, list) or len(samples2) == 0:
+            raise TypeError('prefix1 must be a list of length >= 1')
+        if not os.path.isdir(indir):
+            raise IOError('could not find indir')
+        if (not isinstance(conditions, list)
+            or len(conditions) != 2
+            or not isinstance(conditions[0], str)
+            or not isinstance(conditions[1], str)):
+            raise TypeError('conditions must be a list of two strings')
+        if not isinstance(suffix, str):
+            raise TypeError('suffix must be a string')
+        # Store supplied variables
+        self.samples1 = samples1
+        self.samples2 = samples2
+        self.conditions = conditions
+        self.indir = indir
+        self.suffix = suffix
+        # Create matrix dictionary and check pairings
+        self.matrices = self.__create_matrix_dictionary()
+        self.matrixnames = self.__check_matrix_pairing()
+        
+    def __create_matrix_dictionary(self):
+        # Check that all prefixes are unique strings
+        for s1, s2 in itertools.permutations(self.samples1 + self.samples2, 2):
+            if not isinstance(s1, str) or not isinstance(s2, str):
+                raise TypeError('prefixes must be lists of strings')
+            if s1.startswith(s2):
+                raise ValueError('{} & {} prefixes not unique'.format(s1, s2))
+        # Create dictionary to store extracted matrices
+        matrixDict = collections.OrderedDict()
+        for condition, samples in zip(
+                self.conditions, [self.samples1, self.samples2]
+            ):
+            matrixDict[condition] = collections.OrderedDict()
+            for s in samples:
+                matrixDict[condition][s] = []
+        # Extract matrices for each prefix
+        fileList = os.listdir(self.indir)
+        fileList = [f for f in fileList if f.endswith(self.suffix)]
+        for condition in matrixDict:
+            for sample in matrixDict[condition]:
+                for f in fileList:
+                    if f.startswith(sample):
+                        matrixDict[condition][sample].append(f)
+        # Sort matrix lists and add full path
+        for condition in matrixDict:
+            for sample in matrixDict[condition]:
+                matrixList = matrixDict[condition][sample]
+                matrixList.sort()
+                matrixList = [os.path.join(self.indir, m) for m in matrixList]
+                matrixDict[condition][sample] = matrixList
+        # Return data
+        return(matrixDict)
+    
+    def __check_matrix_pairing(self):
+        # Check that all matrices are paired for all samples
+        reference = None
+        for condition in self.matrices:
+            for sample in self.matrices[condition]:
+                # Extract matrix list and check length
+                matrixList = self.matrices[condition][sample]
+                if len(matrixList) == 0:
+                    raise ValueError('No matrix found for {}'.format(sample))
+                # Extract matrix names
+                regx = re.compile('^.*?/{}([^/]+){}$'.format(sample, self.suffix))
+                matrixNames = [regx.sub('\\1', x) for x in matrixList]
+                matrixNames = [x.strip('.') for x in matrixNames]
+                matrixNames.sort()
+                # Check names are consitent
+                if reference is None:
+                    reference = matrixNames
+                if matrixNames != reference:
+                    print('Reference: {}'.format(', '.join(reference)))
+                    print('Comparison: {}'.format(', '.join(matrixList)))
+                    raise ValueError('Matrix names do not match')
+        # Return data
+        return(reference)
+
     def __prob_matrix(self, path):
         # Read in matrix
         matrix = np.loadtxt(path, delimiter='\t', skiprows=1,
             dtype=np.float64)
-        # Check matrix
+        # Check matrix is square
         m, n = matrix.shape
         if m != n:
             raise ValueError('{} is not square'.format(path))
-        if not np.alltrue(matrix == matrix.T):
-            raise ValueError('{} is not symetrical'.format(path))
+        # Check matrix is symetrical to six decimal places
+        if not np.allclose(matrix,  matrix.T, atol=1.01e-6, rtol=0):
+            self.__extract_nonsymetrical_pairs(matrix)
         # Return matrix
         return(matrix)
     
@@ -311,7 +381,6 @@ class compare_interaction(object):
         # Extract and check bin data
         binData = np.array([re.split('[:-]', x) for x in binNames])
         if not np.alltrue(binData.T[0] == binData.T[0][1]):
-            print(binData.T)
             raise ValueError('{} is not from single chromosome'.format(path))
         # Generate distance matrix
         centres = ((binData.T[1].astype(np.int64) +
@@ -325,41 +394,91 @@ class compare_interaction(object):
         if probMatrix.shape != distMatrix.shape:
             raise ValueError('{} has ambiguos bin numbers'.format('path'))
         return((probMatrix, distMatrix))
+
+    def __extract_nonsymetrical_pairs(self, matrix, maxno=10):
+        different = np.where(matrix != matrix.T)
+        count = 0
+        print('Non-symetrical values found. Examples follow:')
+        for d1, d2 in zip(different[0], different[1]):
+            output = '{}\t{}\t{}\t{}'.format(d1, d2, matrix[d1, d2], matrix[d2, d1])
+            print(output)
+            count += 1
+            if count == maxno:
+                break
+        raise ValueError('Non symetrical matrix found')
     
-    def __extract_dist_prob(self):
+    def extract_dist_prob(self):
         # Create output dataframe
-        outDF = pd.DataFrame(columns = ['cond', 'dist', 'prob'])
+        outDF = pd.DataFrame(
+            columns = ['cond', 'repl', 'smpl', 'mtrx', 'dist', 'prob'])
         # Extract probabilities for input matrices
-        for condition in self.matrixDict:
-            for path in self.matrixDict[condition]:
-                # Create matrices
-                probMatrix, distMatrix = self.__prob_dist_matrix(path)
-                # Extract data from lower triangles
-                trilIndices = np.tril_indices(probMatrix.shape[0])
-                probData = probMatrix[trilIndices]
-                distData = distMatrix[trilIndices]
-                # Create dataframe and concat to output
-                pathDF = pd.DataFrame({
-                    'cond' : pd.Series([condition] * len(probData)),
-                    'dist' : distData,
-                    'prob' : probData
-                }, columns = ['cond', 'dist', 'prob'])
-                outDF = pd.concat((outDF, pathDF), axis=0)
+        for condition in self.matrices:
+            for replicate, sample in enumerate(self.matrices[condition]):
+                for path, name in zip(
+                        self.matrices[condition][sample], self.matrixnames
+                    ):
+                    # Create matrices
+                    probMatrix, distMatrix = self.__prob_dist_matrix(path)
+                    # Extract data from lower triangles
+                    trilIndices = np.tril_indices(probMatrix.shape[0])
+                    probData = probMatrix[trilIndices]
+                    distData = distMatrix[trilIndices]
+                    # Create dataframe and concat to output
+                    pathDF = pd.DataFrame({
+                        'cond' : pd.Series([condition] * len(probData)),
+                        'repl' : pd.Series([replicate + 1] * len(probData)),
+                        'smpl' : pd.Series([sample] * len(probData)),
+                        'mtrx' : pd.Series([name] * len(probData)),
+                        'dist' : distData,
+                        'prob' : probData
+                    }, columns = ['cond', 'repl', 'smpl', 'mtrx', 'dist',
+                        'prob'])
+                    outDF = pd.concat((outDF, pathDF), axis=0)
         return(outDF)
     
-    def calculate_distance_difference(self, rmzero=True, minvalues=10):
+    def mean_matrix_dist_prob(self, rmzero=True):
+        # Check arguments:
+        if not isinstance(rmzero, bool):
+            raise TypeError('rmzero must be bool')
+        # Extract probabilities and remove zeros, if requested
+        probData = self.extract_dist_prob()
+        if rmzero:
+            probData = probData[probData['prob'] > 0]
+        # Split the data and create output dataframe
+        g = probData.groupby(['smpl', 'mtrx', 'dist'])
+        outDF = pd.DataFrame(index = g.groups.keys(), columns=[
+            'cond', 'repl', 'smpl', 'mtrx', 'dist', 'no', 'prob'])
+        outDF = outDF.sort_index()
+        # Populate dataframe
+        for key, data in g:
+            # Check all conditions and replicate data is identical
+            if (data['repl'] != data['repl'].iloc[0]).any():
+                raise ValueError('replicate not consistent across samples')
+            if (data['cond'] != data['cond'].iloc[0]).any():
+                raise ValueError('condition not consistent across samples')
+            # Create and store output
+            output = [data['cond'].iloc[0], data['repl'].iloc[0], key[0],
+                key[1], key[2], data['prob'].size, data['prob'].mean()]
+            outDF.loc[key] = output
+        # Reindex and return dataframe
+        outDF.index = np.arange(len(outDF))
+        return(outDF)
+
+    def calculate_dist_pvalue(self, rmzero=True, minvalues=10):
         # Extract distances for input matrices
-        distProb = self.__extract_dist_prob()
+        distProb = self.extract_dist_prob()
         splitDist = distProb.groupby('dist')
+        # Create output columns
+        colNames = []
+        for condition in self.matrices:
+            for sample in self.matrices[condition]:
+                colNames.append('{}_{}_no'.format(condition, sample))
+                colNames.append('{}_{}_mean'.format(condition, sample))
+        for condition in self.matrices:
+            colNames.append('{}_no'.format(condition))
+            colNames.append('{}_mean'.format(condition))
+        colNames.extend(['pvalue', 'fdr'])
         # Create output dataframe
-        colNames = [
-            '{}_no'.format(self.conditions[0]),
-            '{}_no'.format(self.conditions[1]),
-            '{}_mean'.format(self.conditions[0]),
-            '{}_mean'.format(self.conditions[1]),
-            'pvalue',
-            'fdr'
-        ]
         outDF = pd.DataFrame(
             columns = colNames, index = splitDist.groups.keys())
         outDF = outDF.sort_index()
@@ -368,17 +487,27 @@ class compare_interaction(object):
             # Remove zero values
             if rmzero:
                 data = data[data['prob'] > 0]
-            # Extract group data for first sample
-            cond1 = self.conditions[0]
-            prob1 = data['prob'][data['cond'] == cond1]
-            outDF.loc[dist, cond1 + '_no'] = prob1.size
-            outDF.loc[dist, cond1 + '_mean'] = prob1.mean()
-            # Extract group data for second sample
-            cond2 = self.conditions[1]
-            prob2 = data['prob'][data['cond'] == cond2]
-            outDF.loc[dist, cond2 + '_no'] = prob2.size
-            outDF.loc[dist, cond2 + '_mean'] = prob2.mean()
-            # Calculate p-value
+            # Extract data for conditions and samples
+            condValues = []
+            for cond in self.matrices:
+                # Extract data for condition
+                condData = data[data['cond'] == cond]
+                condProb = condData['prob']
+                condValues.append(condProb)
+                # Add condition data to output
+                colPrefix = '{}_'.format(cond)
+                outDF.loc[dist, colPrefix + 'no'] = condProb.size
+                outDF.loc[dist, colPrefix + 'mean'] = condProb.mean()
+                for smpl in self.matrices[cond]:
+                    # Extract data for sample
+                    smplData = condData[condData['smpl'] == smpl]
+                    smplProb = smplData['prob']
+                    # Add sample data to output
+                    colPrefix = '{}_{}_'.format(cond, smpl)
+                    outDF.loc[dist, colPrefix + 'no'] = smplProb.size
+                    outDF.loc[dist, colPrefix + 'mean'] = smplProb.mean()
+            # Calculate pvalues
+            prob1, prob2 = condValues
             if prob1.size >= minvalues and prob2.size >= minvalues:
                 outDF.loc[dist, 'pvalue'] = mannwhitneyu(prob1, prob2)[1]
         # Sort data, add fdr and return
@@ -387,42 +516,43 @@ class compare_interaction(object):
             outDF.loc[pvalueIndex, 'pvalue'], method='fdr_bh')[1]
         return(outDF)
     
-    def __extract_quantile_distance(
+    def extract_dist_quantile(
             self, quantile
         ):
         # Create output dataframe
-        outDF = pd.DataFrame(columns=['cond', 'quan', 'dist'])
+        outDF = pd.DataFrame(columns=['cond', 'smpl', 'quan', 'dist'])
         # Loop through input queue
-        for condition in self.matrixDict:
-            for path in self.matrixDict[condition]:
-                # Create matrices
-                probMatrix, distMatrix = self.__prob_dist_matrix(path)
-                dfList = []
-                # Loop through columns
-                for dist, prob in zip(distMatrix.T, probMatrix.T):
-                    # Create dataframe listing distances
-                    distDF = pd.DataFrame()
-                    distDF['dist'] = dist
-                    distDF['prob'] = prob
-                    if distDF['prob'].sum() == 0:
-                        continue
-                    if not 1.05 > distDF['prob'].sum() > 0.95:
-                        raise ValueError('Columns must add to 0 or ~1')
-                    # Sort by distance and find cumulative frequence
-                    distDF.sort_values('dist', inplace=True)
-                    distDF['cumsum'] = distDF['prob'].cumsum()
-                    # Create dataframe to store data
-                    quantDF = pd.DataFrame(index = quantile)
-                    quantDF['cond'] = [condition] * len(quantile)
-                    quantDF['quan'] = quantile
-                    # Calculate quantile distances and store
-                    for q in quantile:
-                        subsetDF = distDF[distDF['cumsum'] >= q]
-                        quantDF.loc[q, 'dist'] = subsetDF['dist'].iloc[0]
-                    dfList.append(quantDF)
-                # Append results to output
-                matrixDF = pd.concat(dfList, axis=0)
-                outDF = pd.concat((outDF, matrixDF), axis=0)
+        for cond in self.matrices:
+            for smpl in self.matrices[cond]:
+                for path in self.matrices[cond][smpl]:
+                    # Create matrices
+                    probMatrix, distMatrix = self.__prob_dist_matrix(path)
+                    dfList = []
+                    # Loop through columns
+                    for dist, prob in zip(distMatrix.T, probMatrix.T):
+                        # Create dataframe listing distances
+                        distDF = pd.DataFrame()
+                        distDF['dist'] = dist
+                        distDF['prob'] = prob
+                        if distDF['prob'].sum() == 0:
+                            continue
+                        if not 1.05 > distDF['prob'].sum() > 0.95:
+                            raise ValueError('Columns must add to 0 or ~1')
+                        # Sort by distance and find cumulative frequence
+                        distDF.sort_values('dist', inplace=True)
+                        distDF['cumsum'] = distDF['prob'].cumsum()
+                        # Create dataframe to store data
+                        quantDF = pd.DataFrame(index = quantile)
+                        quantDF['cond'] = [cond] * len(quantile)
+                        quantDF['smpl'] = [smpl] * len(quantile)
+                        quantDF['quan'] = quantile
+                        # Calculate quantile distances and store
+                        for q in quantile:
+                            subsetDF = distDF[distDF['cumsum'] >= q]
+                            quantDF.loc[q, 'dist'] = subsetDF['dist'].iloc[0]
+                        dfList.append(quantDF)
+                    # Append results to output
+                    outDF = pd.concat([outDF] + dfList, axis=0)
         # Return data
         return(outDF)
     
@@ -438,32 +568,44 @@ class compare_interaction(object):
                     raise TypeError('quantile list must contain floats')
         else:
             raise TypeError('quantile must be float or list of floats')
+        # Create colnames for output dataframe
+        colNames = []
+        for condition in self.matrices:
+            for sample in self.matrices[condition]:
+                colNames.append('{}_{}_no'.format(condition, sample))
+                colNames.append('{}_{}_mean'.format(condition, sample))
+        for condition in self.matrices:
+            colNames.append('{}_no'.format(condition))
+            colNames.append('{}_mean'.format(condition))
+        colNames.extend(['pvalue', 'fdr'])
         # Create output dataframe
-        colNames = [
-            '{}_no'.format(self.conditions[0]),
-            '{}_no'.format(self.conditions[1]),
-            '{}_mean'.format(self.conditions[0]),
-            '{}_mean'.format(self.conditions[1]),
-            'pvalue',
-            'fdr'
-        ]
         outDF = pd.DataFrame(index=quantile, columns=colNames)
         outDF = outDF.sort_index()
         # Extract quantile distance data
-        quantData = self.__extract_quantile_distance(quantile)
+        quantData = self.extract_dist_quantile(quantile)
         splitQuant = quantData.groupby('quan')
         for q, data in splitQuant:
-            # Extract group data for first sample
-            cond1 = self.conditions[0]
-            dist1 = data['dist'][data['cond'] == cond1]
-            outDF.loc[q, cond1 + '_no'] = dist1.size
-            outDF.loc[q, cond1 + '_mean'] = dist1.mean()
-            # Extract group data for second sample
-            cond2 = self.conditions[1]
-            dist2 = data['dist'][data['cond'] == cond2]
-            outDF.loc[q, cond2 + '_no'] = dist2.size
-            outDF.loc[q, cond2 + '_mean'] = dist2.mean()
-            # Calculate p-value
+            # Extract data for conditions and samples
+            condValues = []
+            for cond in self.matrices:
+                # Extract data for condition
+                condData = data[data['cond'] == cond]
+                condDist = condData['dist']
+                condValues.append(condDist)
+                # Add condition data to output
+                colPrefix = '{}_'.format(cond)
+                outDF.loc[q, colPrefix + 'no'] = condDist.size
+                outDF.loc[q, colPrefix + 'mean'] = condDist.mean()
+                for smpl in self.matrices[cond]:
+                    # Extract data for sample
+                    smplData = condData[condData['smpl'] == smpl]
+                    smplDist = smplData['dist']
+                    # Add sample data to output
+                    colPrefix = '{}_{}_'.format(cond, smpl)
+                    outDF.loc[q, colPrefix + 'no'] = smplDist.size
+                    outDF.loc[q, colPrefix + 'mean'] = smplDist.mean()
+            # Calculate pvalues
+            dist1, dist2 = condValues
             if dist1.size >= minvalues and dist2.size >= minvalues:
                 outDF.loc[q, 'pvalue'] = mannwhitneyu(dist1, dist2)[1]
         # Add fdr and return
@@ -471,28 +613,3 @@ class compare_interaction(object):
         outDF.loc[pvalueIndex, 'fdr'] = multipletests(
             outDF.loc[pvalueIndex, 'pvalue'], method='fdr_bh')[1]
         return(outDF)
-
-
-
-x = compare_interaction({
-    'A' : [
-        '/camp/stp/babs/working/rabinoa/yasu/mtrData/individualChrArmNormMatrices/NGS-13147.2000.III_ArmR.500.noself.normMatrix.gz',
-        '/camp/stp/babs/working/rabinoa/yasu/mtrData/individualChrArmNormMatrices/NGS-13136.2000.III_ArmR.500.noself.normMatrix.gz'
-    ],
-    'B' : [
-        '/camp/stp/babs/working/rabinoa/yasu/mtrData/individualChrArmNormMatrices/NGS-13146.2000.III_ArmR.500.noself.normMatrix.gz',
-        '/camp/stp/babs/working/rabinoa/yasu/mtrData/individualChrArmNormMatrices/NGS-13138.2000.III_ArmR.500.noself.normMatrix.gz'
-    ]
-})
-y = x.calculate_distance_difference()
-print(y)
-
-
-
-
-
-
-
-
-
-
