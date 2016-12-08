@@ -21,7 +21,7 @@ Options:
 import os
 import re
 import numpy as np
-from ngs_python.structure import interactionMatrix, analyseInteraction
+from ngs_python.structure import interactionMatrix
 from general_python import docopt, toolbox
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')
