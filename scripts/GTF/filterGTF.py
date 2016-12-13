@@ -6,7 +6,7 @@ Usage:
 
 '''
 # Import required modules
-from general_python import docopt, toolbox
+from general_python import docopt
 import re
 import os
 # Extract arguments
