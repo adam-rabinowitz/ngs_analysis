@@ -73,11 +73,12 @@ slurmJobs = slurm.submitJobs()
 ###############################################################################
 # Extract fastq files and check
 if args['--singleend']:
-    args['read1']  = fastqFind.findFastq(
+    args['read1'] = fastqFind.findFastq(
         prefix = args['prefix'],
         dirList = args['<indir>'].split(','),
         pair = False
     )
+    args['read2'] = None
 else:
     args['read1'], args['read2'] = fastqFind.findFastq(
         prefix = args['prefix'],
@@ -91,7 +92,8 @@ if len(args['read1']) < 1:
     raise IOError('Insufficient number of FASTQ files identified')
 if len(args['read1']) == 1:
     args['read1'] = args['read1'][0]
-    args['read2'] = args['read2'][0]
+    if not args['--singleend']:
+        args['read2'] = args['read2'][0]
 else:
     raise IOError('Need to develop multi read input')
 
@@ -99,12 +101,15 @@ else:
 ## Generate commands to trim fastq files
 ###############################################################################
 # Generate file names
-args['trimRead1'] = os.path.join(args['fastqSampleDir'], 
-    args['name'] + '_trim_R1.fastq.gz')
-args['trimRead2'] = os.path.join(args['fastqSampleDir'],
-    args['name'] + '_trim_R2.fastq.gz')
 args['trimLog'] = os.path.join(args['fastqSampleDir'],
     args['name'] + '_cutadapt.log')
+args['trimRead1'] = os.path.join(args['fastqSampleDir'], 
+    args['name'] + '_trim_R1.fastq.gz')
+if args['--singleend']:
+    args['trimRead2'] = None
+else:
+    args['trimRead2'] = os.path.join(args['fastqSampleDir'],
+        args['name'] + '_trim_R2.fastq.gz')
 # Generate commands to process single-end FASTQ files
 trimReadsCommand = fastqTrim.cutadapt(
     read1In = args['read1'],
