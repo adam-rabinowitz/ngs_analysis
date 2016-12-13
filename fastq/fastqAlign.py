@@ -371,7 +371,7 @@ def tophat2Align(
         raise TypeError('read1 argument must be string or list of strings')
     if isinstance(read2, list):
         read2 = ','.join(read2)
-    if not isinstance(read2, str):
+    if not read2 is None and not isinstance(read2, str):
         raise TypeError('read2 argument must be string or list of strings')
     # Check threads argument
     if not isinstance(threads, int):
