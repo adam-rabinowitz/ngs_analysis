@@ -1,15 +1,14 @@
 import numpy as np
 import os
-import pandas as pd
 import unittest
 from ngs_python.bam import pysam_coverage
 
-class TestMeanCoverage(unittest.TestCase):
+class test_mean_coverage_each(unittest.TestCase):
     
     def setUp(self):
-        dirPath = os.path.dirname(os.path.realpath(__file__))
-        bamFile = os.path.join(dirPath, 'test_coverage.bam')
-        self.cov = pysam_coverage.single_coverage(bamFile)
+        dirpath = os.path.dirname(os.path.realpath(__file__))
+        bamfile = os.path.join(dirpath, 'test_coverage.bam')
+        self.cov = pysam_coverage.single_coverage(bamfile)
         self.intervals = [
             ('ref', 0, 2),
             ('ref', 5, 9),
@@ -20,38 +19,116 @@ class TestMeanCoverage(unittest.TestCase):
             ('ref', 50, 54),
             ('ref', 64, 70)
         ]
-        self.names = ['{}:{}-{}'.format(*x) for x in self.intervals]
     
     def test_all_reads(self):
-        meanCov = self.cov.mean_coverage(self.intervals)
-        exptCov = pd.Series([0, 1.25, 2, 2.5, 2.333, 0.5, 0, 0],
-            index=self.names)
-        self.assertTrue(np.allclose(meanCov, exptCov, rtol=0, atol=0.001))
+        meancov = self.cov.mean_coverage_each(self.intervals)
+        exptcov = np.array([0, 1.25, 2, 2.5, 2.333, 0.5, 0, 0])
+        self.assertTrue(np.allclose(meancov, exptcov, rtol=0, atol=0.001))
     
     def test_duplicate_reads(self):
-        meanCov = self.cov.mean_coverage(self.intervals, remove_dup=True)
-        exptCov = pd.Series([0, 1.25, 2, 2.25, 2, 0.5, 0, 0],
-            index=self.names)
-        self.assertTrue(np.allclose(meanCov, exptCov, rtol=0, atol=0.001))
+        meancov = self.cov.mean_coverage_each(self.intervals, remove_dup=True)
+        exptcov = np.array([0, 1.25, 2, 2.25, 2, 0.5, 0, 0])
+        self.assertTrue(np.allclose(meancov, exptcov, rtol=0, atol=0.001))
     
     def test_secondary_reads(self):
-        meanCov = self.cov.mean_coverage(self.intervals, remove_secondary=True)
-        exptCov = pd.Series([0, 0.5, 1, 1.625, 2.333, 0.5, 0, 0],
-            index=self.names)
-        self.assertTrue(np.allclose(meanCov, exptCov, rtol=0, atol=0.001))
+        meancov = self.cov.mean_coverage_each(self.intervals,
+            remove_secondary=True)
+        exptcov = np.array([0, 0.5, 1, 1.625, 2.333, 0.5, 0, 0])
+        self.assertTrue(np.allclose(meancov, exptcov, rtol=0, atol=0.001))
     
     def test_read_quality_10(self):
-        meanCov = self.cov.mean_coverage(self.intervals, map_quality=20)
-        exptCov = pd.Series([0, 1.25, 2, 2.5, 1.333, 0, 0, 0],
-            index=self.names)
-        self.assertTrue(np.allclose(meanCov, exptCov, rtol=0, atol=0.001))
+        meancov = self.cov.mean_coverage_each(self.intervals, map_quality=20)
+        exptcov = np.array([0, 1.25, 2, 2.5, 1.333, 0, 0, 0])
+        self.assertTrue(np.allclose(meancov, exptcov, rtol=0, atol=0.001))
     
     def test_read_quality_20(self):
-        meanCov = self.cov.mean_coverage(self.intervals, map_quality=10)
-        exptCov = pd.Series([0, 1.25, 2, 2.5, 2.333, 0.25, 0, 0],
-            index=self.names)
-        self.assertTrue(np.allclose(meanCov, exptCov, rtol=0, atol=0.001))
+        meancov = self.cov.mean_coverage_each(self.intervals, map_quality=10)
+        exptcov = np.array([0, 1.25, 2, 2.5, 2.333, 0.25, 0, 0])
+        self.assertTrue(np.allclose(meancov, exptcov, rtol=0, atol=0.001))
 
+class test_coverage_count_all(unittest.TestCase):
+    
+    def setUp(self):
+        dirpath = os.path.dirname(os.path.realpath(__file__))
+        bamfile = os.path.join(dirpath, 'test_coverage.bam')
+        self.cov = pysam_coverage.single_coverage(bamfile)
+    
+    def test_all_reads(self):
+        covDict = self.cov.coverage_count_all([('ref', 0, 70)])
+        expDict = {0:12, 1:20, 2:10, 3:17, 4:11}
+        self.assertTrue(covDict == expDict)
+    
+    def test_duplicate_reads(self):
+        covDict = self.cov.coverage_count_all([('ref', 0, 70)],
+            remove_dup=True)
+        expDict = {0:12, 1:20, 2:19, 3:19}
+        self.assertTrue(covDict == expDict)
+    
+    def test_secondary_reads(self):
+        covDict = self.cov.coverage_count_all([('ref', 0, 70)],
+            remove_secondary=True)
+        expDict = {0:15, 1:25, 2:10, 3:10, 4:10}
+        self.assertTrue(covDict == expDict)
+    
+    def test_read_quality_10(self):
+        covDict = self.cov.coverage_count_all([('ref', 0, 70)],
+            map_quality=10)
+        expDict = {0:22, 1:10, 2:10, 3:17, 4:11}
+        self.assertTrue(covDict == expDict)
+    
+    def test_read_quality_20(self):
+        covDict = self.cov.coverage_count_all([('ref', 0, 70)],
+            map_quality=20)
+        expDict = {0:25, 1:9, 2:13, 3:22, 4:1}
+        self.assertTrue(covDict == expDict)
+    
+    def test_filter_all(self):
+        covDict = self.cov.coverage_count_all([('ref', 0, 70)],
+            map_quality=20, remove_secondary=True, remove_dup=True)
+        expDict = {0:28, 1:19, 2:23}
+        self.assertTrue(covDict == expDict)
+    
+    def test_max_cov(self):
+        covDict = self.cov.coverage_count_all([('ref', 0, 70)], max_cov=3)
+        expDict = {0:12, 1:20, 2:10, 3:28}
+        self.assertTrue(covDict == expDict)
+    
+    def test_multi_region(self):
+        covDict = self.cov.coverage_count_all([('ref', 10, 20),
+            ('ref', 30, 40), ('ref', 50, 60)])
+        expDict = {0:4, 1:6, 2:2, 3:13, 4:5}
+        self.assertTrue(covDict == expDict)
+
+class test_coverage_histogram(unittest.TestCase):
+    
+    def setUp(self):
+        dirpath = os.path.dirname(os.path.realpath(__file__))
+        bamfile = os.path.join(dirpath, 'test_coverage.bam')
+        self.cov = pysam_coverage.single_coverage(bamfile)
+    
+    def test_all_reads(self):
+        covhist = self.cov.coverage_histogram([('ref', 0, 70)], max_cov=5)
+        exphist = np.array([1, 0.828, 0.542, 0.4, 0.157, 0])
+        self.assertTrue(np.allclose(covhist, exphist, rtol=0, atol=0.001))
+    
+    def test_filter_all(self):
+        covhist = self.cov.coverage_histogram([('ref', 0, 70)], max_cov=5,
+            map_quality=20, remove_secondary=True, remove_dup=True)
+        exphist = np.array([1, 0.6, 0.328, 0, 0, 0])
+        self.assertTrue(np.allclose(covhist, exphist, rtol=0, atol=0.001))
+    
+    def test_max_cov(self):
+        covhist = self.cov.coverage_histogram([('ref', 0, 70)], max_cov=3)
+        exphist = np.array([1, 0.828, 0.542, 0.4])
+        self.assertTrue(np.allclose(covhist, exphist, rtol=0, atol=0.001))
+    
 if __name__ == '__main__':
-    suite = unittest.TestLoader().loadTestsFromTestCase(TestMeanCoverage)
+    
+    suite = unittest.TestLoader().loadTestsFromTestCase(test_mean_coverage_each)
+    unittest.TextTestRunner(verbosity=2).run(suite)
+    
+    suite = unittest.TestLoader().loadTestsFromTestCase(test_coverage_count_all)
+    unittest.TextTestRunner(verbosity=2).run(suite)
+    
+    suite = unittest.TestLoader().loadTestsFromTestCase(test_coverage_histogram)
     unittest.TextTestRunner(verbosity=2).run(suite)
