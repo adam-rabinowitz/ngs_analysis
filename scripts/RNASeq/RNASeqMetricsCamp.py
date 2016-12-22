@@ -159,12 +159,19 @@ for directory in dirDict['fastqDirList']:
     # Open file and extract data
     with open(trimFileName, 'r') as trimFile:
         trimData = trimFile.read()
-    # Extract trimmed reads
-    processed = re.search('Total read pairs processed:\\s+(\\d{1,3}(,\\d{3})*)',
-        trimData).group(1)
+    # Extract trimmed read stats
+    if args['--singleend']:
+        processed = re.search('Total reads processed:\\s+(\\d{1,3}(,\\d{3})*)',
+            trimData).group(1)
+        tooShort = re.search('Reads that were too short:\\s+(\\d{1,3}(,\\d{3})*)',
+            trimData).group(1)
+    else:
+        processed = re.search('Total read pairs processed:\\s+(\\d{1,3}(,\\d{3})*)',
+            trimData).group(1)
+        tooShort = re.search('Pairs that were too short:\\s+(\\d{1,3}(,\\d{3})*)',
+            trimData).group(1)
+    # Process trimmed reads stats and add to output
     processed = re.sub(',','',processed)
-    tooShort = re.search('Pairs that were too short:\\s+(\\d{1,3}(,\\d{3})*)',
-        trimData).group(1)
     tooShort = re.sub(',','',tooShort)
     qcMetrics.loc[directory, 'initial_reads'] = processed
     qcMetrics.loc[directory, 'trim_loss_rate'] = (int(tooShort) /
