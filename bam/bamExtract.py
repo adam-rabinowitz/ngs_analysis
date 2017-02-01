@@ -33,31 +33,34 @@ def concordant(read1, read2, maxSize = 2000):
     # Retrun return variable
     return(outer, inner)
 
-def pairGeneratorPaired(bamFile, mapQ = ''):
+def pairGeneratorPaired(
+        bam, map_quality = 0, skip_secondary = True
+    ):
     ''' Function extracts read pairs from paired-end aligned, name
     sorted BAM files. Secondary alignments are ignored. Function
     takes two arguments:
-
+    
     1)  bamFile - Name of input bamFile.
     2)  mapQ - Minimum mapping quality of reads.
-
+    
     '''
     # Open bamFile and loop through
+    inBam = pysam.AlignmentFile(bam, 'rb')
     readList = []
     currentName = ''
-    inBam = pysam.AlignmentFile(bamFile, 'rb')
     while True:
         # Extract read data
         try:
             read = inBam.next()
             readName = read.query_name
         except StopIteration:
-            readName = 'EndOfFile'
+            inBam.close()
+            fileOpen = False
+            readName = None
         # Process completed families
         if readName != currentName:
             # Count and process read-pairs
             if len(readList) == 2:
-                print 'Pair!'
                 read1, read2 = readList
                 if read1.is_read1 and read2.is_read2:
                     yield(read1, read2)
@@ -67,13 +70,13 @@ def pairGeneratorPaired(bamFile, mapQ = ''):
             currentName = readName
             readList = []
         # Break loop at end of BAM file
-        if readName == 'EndOfFile':
-            break
+        if readName is None:
+            raise StopIteration
         # Skip secondary alignments
-        elif (read.flag & 256):
+        elif skip_secondary and read.flag & 256:
             continue
         # Skip reads below supplied mapping quality
-        elif mapQ and read.mapping <= mapQ:
+        elif map_quality and read.mapping <= map_quality:
             continue
         # Else append read to read list
         else:
