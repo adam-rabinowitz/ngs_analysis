@@ -14,7 +14,7 @@ Options:
     --forprob=<fp>          Probability read1 from sense strand [default: 0.5]
     --trimqual=<tq>         Base quality for trimming [default: 20]
     --minlength=<ml>        Minimum length of reads [default: 25]
-    --threads=<th>          Number of threads to use [default: 4]
+    --threads=<th>          Number of threads to use [default: 16]
     --singleend             Samples are single end
 
 '''
@@ -78,24 +78,47 @@ if args['--singleend']:
         dirList = args['<indir>'].split(','),
         pair = False
     )
-    args['read2'] = None
+    args['read2'] = [None]
 else:
     args['read1'], args['read2'] = fastqFind.findFastq(
         prefix = args['prefix'],
         dirList = args['<indir>'].split(','),
         pair = True
     )
-    if len(args['read1']) != len(args['read2']):
-        raise IOError('Unequal number of FASTQ files identified')
-# Check input read length
+# Raise error if no FASTQ files identified
 if len(args['read1']) < 1:
     raise IOError('Insufficient number of FASTQ files identified')
+# Skip concatenation if multiple FASTQ files identified
 if len(args['read1']) == 1:
-    args['read1'] = args['read1'][0]
-    if not args['--singleend']:
-        args['read2'] = args['read2'][0]
+    concatJobs = []
+    args['concatRead1'] = args['read1'][0]
+    args['concatRead2'] = args['read2'][0]
+# Concatenate multiple FASTQ files
 else:
-    raise IOError('Need to develop multi read input')
+    # Generate file names
+    args['concat1Log'] = os.path.join(args['fastqSampleDir'],
+     args['name'] + '_concat1.log')
+    args['concatRead1'] = os.path.join(args['fastqSampleDir'],
+        args['name'] + '_concat_R1.fastq.gz')
+    # Create and process command
+    concat1Command = 'zcat {} | gzip > {}'.format(
+        ' '.join(args['read1']), args['concatRead1'])
+    concat1JobID = slurmJobs.add(concat1Command, stdout=args['concat1Log'],
+        stderr=args['concat1Log'])
+    concatJobs = [concat1JobID]
+    # Process read2 FASTQ
+    if args['--singleend']:
+        args['concatRead2'] = None
+    else:
+        args['concat2Log'] = os.path.join(args['fastqSampleDir'],
+            args['name'] + '_concat2.log')
+        args['concatRead2'] = os.path.join(args['fastqSampleDir'],
+            args['name'] + '_concat_R2.fastq.gz')
+        concat2Command = 'zcat {} | gzip > {}'.format(
+            ' '.join(args['read2']), args['concatRead2'])
+        concat2JobID = slurmJobs.add(concat2Command, stdout=args['concat2Log'],
+            stderr=args['concat2Log'])
+        concatJobs.append(concat2JobID)
 
 ###############################################################################
 ## Generate commands to trim fastq files
@@ -112,9 +135,9 @@ else:
         args['name'] + '_trim_R2.fastq.gz')
 # Generate commands to process single-end FASTQ files
 trimReadsCommand = fastqTrim.cutadapt(
-    read1In = args['read1'],
+    read1In = args['concatRead1'],
     read1Out = args['trimRead1'],
-    read2In = args['read2'],
+    read2In = args['concatRead2'],
     read2Out = args['trimRead2'],
     path = pmDict[('cutadapt', 'path')],
     length = args['--minlength'],
@@ -126,7 +149,8 @@ trimReadsJobID = slurmJobs.add(
     processors = 1,
     stdout = args['trimLog'],
     stderr = args['trimLog'],
-    modules = pmDict[('cutadapt', 'modules')]
+    modules = pmDict[('cutadapt', 'modules')],
+    depend = concatJobs
 )
 
 ###############################################################################
@@ -216,6 +240,16 @@ tophat2AlignJobID = slurmJobs.add(
 )
 
 ###############################################################################
+## Delete temporary Fastq files
+###############################################################################
+removeFiles = [args['trimRead1'], args['trimRead2']]
+if concatJobs:
+    removeFiles.extend([args['concatRead1'], args['concatRead2']])
+removeFiles = filter(None, removeFiles)
+removeCommand = 'rm {}'.format(' '.join(removeFiles))
+slurmJobs.add(removeCommand, depend = [rsemAlignJobID, tophat2AlignJobID])
+
+###############################################################################
 ## Mark duplicates in Tophat output
 ###############################################################################
 args['tophatBam'] = os.path.join(args['tophatSampleDir'], 'accepted_hits.bam')
@@ -276,4 +310,4 @@ seqcJobID = slurmJobs.add(
 ## Submit commands
 #################################################################################
 # Submit jobs and print command
-slurmJobs.submit(verbose = True)
+slurmJobs.submit(verbose = True, check_sub=False)
