@@ -177,6 +177,11 @@ def bwaMemAlign(
         markSecondary = '-M'
     else:
         markSecondary = ''
+    # Process multiple input fastq files
+    if isinstance(read1, list):
+        read1 = "'< zcat " + ' '.join(read1) + "'"
+    if isinstance(read2, list):
+        read2 = "'< zcat " + ' '.join(read2) + "'"
     # Create command
     bwaCommand = [bwaPath, 'mem', markSecondary ,'-t', str(threads),
         index, read1, read2]
