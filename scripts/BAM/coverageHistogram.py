@@ -14,13 +14,17 @@ Options:
 
 '''
 # Load required modules
+import os
 from general_python import docopt
 from ngs_python.bam import pysam_coverage
 import pandas as pd
-# Extract arguments
+# Extract and process arguments
 args = docopt.docopt(__doc__,version = 'v1')
 args['--minmap'] = int(args['--minmap'])
 args['--maxcov'] = int(args['--maxcov'])
+args['<intervals>'] = os.path.abspath(args['<intervals>'])
+args['<outfile>'] = os.path.abspath(args['<outfile>'])
+args['<bam>'] = [os.path.abspath(x) for x in args['<bam>']]
 # Open interval list file and extract data
 intervalList = []
 with open(args['<intervals>']) as intervalFile:
