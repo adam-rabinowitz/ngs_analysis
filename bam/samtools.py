@@ -105,7 +105,7 @@ def sort(
         )
         sortFile = tempBam
     else:
-        raise TypeError('Input file suffix must be .bam/.sam' %(inFile))
+        raise TypeError('Input file suffix must be .bam/.sam')
     # Check output file
     if outFile.endswith('.sam'):
         outFormat = 'sam'
@@ -186,3 +186,16 @@ def mpileup(
     # Retutn command
     return(finalCommand)
 
+def merge(
+        inBamList, outBam, delete = False, path = 'samtools'
+    ):
+    # Check arguments
+    if not isinstance(inBamList, list):
+        raise TypeError('inBamList must be list')
+    if not isinstance(delete, bool):
+        raise TypeError('delete must be boolean')
+    # Create and return command
+    command = '{} merge -f {} {}'.format(path, outBam, ' '.join(inBamList))
+    if delete:
+        command += ' && rm {}'.format()
+    return(command)
