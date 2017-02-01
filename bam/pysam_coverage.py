@@ -1,5 +1,4 @@
 import os
-import time
 import pysam
 import numpy as np
 import pandas as pd
@@ -27,9 +26,6 @@ class single_coverage(object):
             filter_flag += 1024
         if remove_secondary:
             filter_flag += 256
-        # Create counter for output
-        counter = 0
-        start_time = time.time()
         # Open bam file and loop through intervals
         bamFile = pysam.AlignmentFile(self.bam)
         for interval in intervals:
@@ -38,13 +34,6 @@ class single_coverage(object):
             chrom, start, end = interval
             # Extract reads for interval
             for read in bamFile.fetch(chrom, start, end):
-                # Process counter
-                counter += 1
-                if not counter % 1e6:
-                    current_time = time.time()
-                    print('{} million reads. Last million in {} seconds'.format(
-                        counter / 1e6, current_time - start_time))
-                    start_time = current_time
                 # Skip unmapped, failed, duplicate and secondary reads
                 if read.flag & filter_flag:
                     continue
