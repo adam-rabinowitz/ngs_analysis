@@ -7,7 +7,7 @@ def bowtie2Align(
         threads = 1, readGroup = 1, sampleName = None, libraryID = None,
         platform = None, discordant = False, mixed = False, upto = None,
         maxInsert = None, check = True, samtoolsPath = 'samtools',
-        memory = '2', nameSort = False
+        memory = 2, nameSort = False
     ):
     ''' Function to generate command to peform Bowtie2 Alignment of
     paired FASTQ files. Function takes 9 arguments:
@@ -185,7 +185,7 @@ def bwaMemAlign(
     # Create command
     bwaCommand = [bwaPath, 'mem', markSecondary ,'-t', str(threads),
         index, read1, read2]
-    # Remove missing elements from coomand
+    # Remove missing elements from command
     bwaCommand = filter(None, bwaCommand)
     # Add read group data
     if readGroup:
