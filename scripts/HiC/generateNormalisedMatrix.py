@@ -16,6 +16,7 @@ Options:
     
 """
 # Import required modules
+import os
 from ngs_python.structure import interactionMatrix
 from general_python import docopt
 # Extract arguments
@@ -24,6 +25,9 @@ args = docopt.docopt(__doc__, version = '1.0')
 args['<mincount>'] = int(args['<mincount>'])
 args['--threads'] = int(args['--threads'])
 args['--iter'] = int(args['--iter'])
+# Process file paths
+args['<outdir>'] = os.path.abspath(args['<outdir>'])
+args['<infiles>'] = [os.path.abspath(x) for x in args['<infiles>']]
 # Perform processing
 normMatrices = interactionMatrix.normaliseCountMatrices(
     matrixList=args['<infiles>'], regionFile=args['<regions>'])

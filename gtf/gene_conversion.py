@@ -32,6 +32,7 @@ def create_tran_dictionary(tranfile):
             elif len(lineData) == 2:
                 inGene, outGene = lineData
             else:
+                print(lineData)
                 raise ValueError('Line does not have 1 or 2 elements')
             # Add gene data to dictionary
             if inGene in tranDict:
@@ -69,13 +70,14 @@ def replace_gene_names(
     '''
     # Check arguments
     if not isinstance(genecol, int) or genecol < 0:
-        raise ValueError('Unacceptable value for geneCol')
+        raise ValueError('genecol argument must be integer >= 0')
     if not isinstance(translation, dict):
-        raise ValueError('Unacceptable value for translation')
+        raise TypeError('translation argument must be dictionary')
     if not isinstance(header, bool):
-        raise ValueError('Unacceptable value for header')
+        raise TypeError('header argument must be bool')
     if not isinstance(rmdup, bool):
-        raise ValueError('Unacceptable value for rmdup')
+        raise TypeError('rmdup argument must be boolean')
+    print(rmdup)
     # Check names
     outGeneCounter = collections.defaultdict(int)
     with open(infile, 'r') as filein:
@@ -88,7 +90,8 @@ def replace_gene_names(
             for outGene in outGenes:
                 outGeneCounter[outGene] += 1
     # Create output files
-    log = {'total':0, 'multiOut':0, 'multiIn':0, 'noOut':0, 'single':0}
+    inCounter = collections.defaultdict(int)
+    outCounter = collections.defaultdict(int)
     with open(infile, 'r') as filein, open(outfile, 'w') as fileout:
         # Write header
         if header:
@@ -97,30 +100,24 @@ def replace_gene_names(
         # Loop through line and create output
         for line in filein:
             # Parse line and extract input and output genes
-            log['total'] += 1
             lineData = line.strip().split('\t')
             inGene = lineData[genecol]
             outGenes = translation[inGene]
+            inCounter[len(outGenes)] += 1
             # Count and skip input genes with no output
-            if len(outGenes) == 0:
-                log['noOut'] += 1
+            if len(outGenes) > 1 and rmdup:
                 continue
-            # Count and skip input genes with multiple output
-            if rmdup and len(outGenes) > 1:
-                log['multiOut'] += 1
-                continue
-            # Loop through output genes
+            # Loop through outputs
             for outGene in outGenes:
-                # Count and skip output genes with multiple input
-                if rmdup and outGeneCounter[outGene] > 1:
-                    log['multiIn'] += 1
+                inCount = outGeneCounter[outGene]
+                outCounter[inCount] += 1
+                if inCount > 1 and rmdup:
                     continue
-                # Write output file
-                log['single'] += 1
+                # Create and write output
                 lineData[genecol] = outGene
                 fileout.write('{}\n'.format('\t'.join(lineData)))
     # Return log
-    return(log)
+    return(inCounter, outCounter)
 
 def extract_gene_results(
         results, geneCol, statCol, statMax, header
@@ -472,15 +469,6 @@ def extract_overlap_results_posneg(
         outFile = '{}.{}.{}.results'.format(outPrefix, term, change)
         with open(outFile, 'w') as out:
             out.write(outLines)
-
-extract_overlap_results_posneg(
-    outPrefix = '/farm/scratch/rs-bio-lif/rabino01/myrtoDenaxa/geneOntology/customResults/overlapData/A_WTvsMU',
-    gmt = '/farm/scratch/rs-bio-lif/rabino01/myrtoDenaxa/geneOntology/customGmt/myrto.guilherme.ensembl.gmt',
-    results = '/farm/scratch/rs-bio-lif/rabino01/myrtoDenaxa/rnaSeqPool/myrto/DESeq/A_WTvsMU.results',
-    geneCol = 0,
-    log2Col = 3,
-    statCol = 7
-)
 
 def extract_ensembl_names(gtf):
     # Create regular expressions
