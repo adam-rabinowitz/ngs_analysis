@@ -373,6 +373,160 @@ class single_coverage(object):
         outFile.close()
         pipe.close()
         process.join()
+    
+    # Function to create genome bins
+    def create_bins(self, binSize, binEqual):
+        ''' A function to create bins covering the genome.
+        
+        Args:
+            binsize (int)- Maximum bin size.
+            binequal (bool)- If True then all bins will be of an equal size.
+                and if a chromosome is not a multiple of the binsize te most
+                telomeric regions will be ignored. If False then bin sizes
+                may be reduced to cover the chromosome as equally as possible.
+        
+        Returns:
+            binarray -A numpy array of the chromosome, start site and end of
+                the bins. Chromosome positions are 0-indexed half-open.
+        
+        '''
+        # Check arguments
+        if not isinstance(binSize, int):
+            raise TypeError('binSize must be integer')
+        if not binSize > 0:
+            raise ValueError('binSize must be >0')
+        if not isinstance(binEqual, bool):
+            raise TypeError('binEqual must be bool')
+        # Create output data variables
+        binDict = collections.OrderedDict()
+        count = 0
+        # Loop through chromsome and generate bin data frame
+        for chrName, chrLength in self.length.items():
+            # Generate bin start and end for equal width bins
+            if binEqual:
+                # Calculate initial start and end
+                remainder = chrLength % binSize
+                start = int(np.floor(remainder/2)) 
+                end = start + binSize
+                # Calculate start and stop of all bins
+                binEnd = np.arange(end, int(chrLength) + 1, binSize,
+                    dtype = np.uint32)
+                binStart = (binEnd - binSize)
+            # Generate bin start and end sites for unequal width bins
+            else:
+                # Calculate numbe and size of bins
+                binNo = np.ceil(float(chrLength) / binSize)
+                excess = (binNo * binSize) - int(chrLength)
+                largeBin = int(binSize - np.floor(excess / binNo))
+                smallBin = int(binSize - np.ceil(excess / binNo))
+                # Calculate bin numbers
+                smallBinNo = int(excess % binNo)
+                largeBinNo = int(binNo - smallBinNo)
+                # Generate bins
+                binWidth = np.array([largeBin] * largeBinNo + 
+                    [smallBin] * smallBinNo)
+                binEnd = np.cumsum(binWidth, dtype = np.uint32)
+                binStart = (binEnd - binWidth)
+            # Generate arrays containing bin index and chromosome name
+            count += len(binStart)
+            binCounts = np.zeros(len(binStart), dtype = np.uint32)
+            # Store output data
+            binDict[chrName] = {'start' : binStart, 'end' : binEnd, 'count' :
+                binCounts}
+        # Return dataframe
+        return(binDict)
+        
+    def add_bin_count(self, binDict, chrom, position):
+        ''' Return index of bin of specified chromosme position.
+        
+        Args:
+            binDict (dict)- A dictionary of bin data generated using the
+                self.create_bins function.
+            chrom (str)- Chromsome name.
+            position (int)- Position on chromosome. 0 index half-closed.
+        
+        Returns:
+            binIndex (int)- Index of bin as defined within binDict.
+        
+        '''
+        # Convert position format
+        position = np.uint32(position)
+        binLocation = binDict[chrom]['end'].searchsorted(
+            position, side='right')
+        # Extract and return bin index
+        try:
+            binStart = binDict[chrom]['start'][binLocation]
+        except IndexError:
+            binStart = position + 1
+        # Extract bin name/number
+        if binStart <= position:
+            binDict[chrom]['count'][binLocation] += 1
+    
+    def count_bin_overlaps(
+            self, binSize, binEqual, mapQ, overlap, rmDup=False, rmSec=False,
+            rmSup=False
+        ):
+        ''' Counts overlaps between reads in a BAM file and genome bins.
+        
+        Args:
+            binSize (int)- Maximum size of bins.
+            binEqual (bool)- Whether bins should be equally sized.
+            overlap (str)- Must be one of the following:
+                'refstart' - 5' most portion of the read on the reference.
+                'refend' - 3' most portion of the read on the reference.
+                'readstart' - First sequenced base of the read.
+                'readend' - Last sequence base of the read.
+            rmDup (bool)- Remove duplicate reads
+            rmSecond (bool)- Remove secondary reads.
+        
+        '''
+        # Check arguments
+        if not isinstance(rmDup, bool):
+            raise TypeError('rmDup must be bool')
+        if not isinstance(rmSec, bool):
+            raise TypeError('rmSecond must be bool')
+        if not isinstance(rmSup, bool):
+            raise TypeError('rmSupplement must be bool')
+        # Create filter flag
+        flagFilter = 516
+        if rmDup:
+            flagFilter += 1024
+        if rmSec:
+            flagFilter += 256
+        if rmSup:
+            flagFilter += 2048
+        # Create bin dictionary and output
+        binDict = self.create_bins(binSize, binEqual)
+        # Open bam and loop through
+        inbam = pysam.AlignmentFile(self.bam)
+        for read in inbam:
+            # Skip unwanted and poorly mapped reads
+            if read.flag & flagFilter:
+                continue
+            if read.mapping_quality < mapQ:
+                continue
+            # Extract chromosome name
+            ref_name = read.reference_name
+            ref_start = read.reference_start
+            ref_end = read.reference_end - 1
+            if overlap == 'refstart':
+                self.add_bin_count(binDict, ref_name, ref_start)
+            elif overlap == 'refend':
+                self.add_bin_count(binDict, ref_name, ref_end)
+            elif overlap == 'readstart':
+                if read.is_reverse:
+                    self.add_bin_count(binDict, ref_name, ref_end)
+                else:
+                    self.add_bin_count(binDict, ref_name, ref_start)
+            elif overlap == 'readend':
+                if read.is_reverse:
+                    self.add_bin_count(binDict, ref_name, ref_start)
+                else:
+                    self.add_bin_count(binDict, ref_name, ref_end)
+            else:
+                raise ValueError('Unrecognised value for overlap')
+        # Return data
+        return(binDict)
 
 class multiple_coverage(object):
     
