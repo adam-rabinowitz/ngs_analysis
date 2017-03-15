@@ -12,26 +12,180 @@ def calcRatio(
     )
     return(finalCommand)
 
+def germlineSNP(
+        mpileup, outfile, minCov = 8, minVarReads = 2, minAvgQual = 15,
+        minVarFreq = 0.01, minHomFreq = 0.75, pValue = 0.99, javaPath = 'java',
+        varscanPath = 'varscan.jar', memory = None
+    ):
+    ''' A function to generate a varscan command to identify germline snps.
+    
+    Args:
+        mpileup (str)- Full path to mpileup file.
+        outfile (str)- Full path to output file.
+        minCov (int)- Min coverage to call variant.
+        minVarReads (int)- Min number of variant reads to call variant.
+        minAvgQual (int)- Min average base qaulity to call variant.
+        minVarFreq (float/int)- Min variant frequency.
+        pValue (float)- Minimum pvalue to call vatiant
+        javaPath (str)- Java executable.
+        varscanPath (str)- Path to java jar file.
+        memory (int)- Memory in GB for java stack.
+    
+    '''
+    # Check arguments
+    if not isinstance(minCov, int):
+        raise TypeError('minCov must be integer')
+    if 1 > minCov:
+        raise ValueError('minCov must be >0')
+    if not isinstance(minVarReads, int):
+        raise TypeError('minVarReads must be integer')
+    if 1 > minVarReads:
+        raise ValueError('minVarReads must be >0')
+    if not isinstance(minAvgQual, int):
+        raise TypeError('minAvgQual must be integer')
+    if 1 > minAvgQual:
+        raise ValueError('minVarReads must be >0')
+    if not isinstance(minVarFreq, (float, int)):
+        raise TypeError('minVarFreq must be float or integer')
+    if not 0 < minVarFreq <= 1:
+        raise ValueError('minVarFreq must be >0 and <=1')
+    if not isinstance(minHomFreq, (float, int)):
+        raise TypeError('minHomFreq must be float or integer')
+    if not 0 < minHomFreq <=1:
+        raise ValueError('minHomFreq must be >0 and <=1')
+    if not isinstance(pValue, float):
+        raise TypeError('pValue must be float or integer')
+    if not 0 < pValue <1:
+        raise ValueError('pValue must be >0 and <1')
+    if not isinstance(javaPath, str):
+        raise TypeError('javaPath must be string')
+    if not isinstance(varscanPath, str):
+        raise TypeError('pValue must be string')
+    if memory and not isinstance(memory, int):
+        raise TypeError('memory must be a string')
+    if memory and not 0 < memory <=256:
+        raise ValueError('memory must be >0 and <=256')
+    # Create command
+    command = [
+        javaPath, '-jar', varscanPath, 'pileup2snp', mpileup, '--min-coverage',
+        str(minCov), '--min-reads2', str(minVarReads), '--min-avg-qual',
+        str(minAvgQual), '--min-var-frequency', str(minVarFreq),
+        '--min-freq-for-hom', str(minHomFreq), '--p-values', str(pValue),
+        '>', outfile
+    ]
+    # Add memory
+    if memory:
+        command.insert(1, '-Xmx{}g'.format(memory))
+    # Join and return command
+    command = ' '.join(command)
+    return(command)
+
+def filterGermlineSNP(
+        infile, outfile, minCov = 10, minVarReads = 2, minVarFreq = 0.1,
+        maxVarFreq = 1, maxStrandBias=0.9
+    ):
+    # Check arguments
+    if not isinstance(minCov, int):
+        raise TypeError('minCov must be integer')
+    if 1 > minCov:
+        raise ValueError('minCov must be >0')
+    if not isinstance(minVarReads, int):
+        raise TypeError('minVarReads must be integer')
+    if 1 > minVarReads:
+        raise ValueError('minVarReads must be >0')
+    if not isinstance(minVarFreq, (float, int)):
+        raise TypeError('minVarFreq must be float or integer')
+    if not 0 < minVarFreq <= 1:
+        raise ValueError('minVarFreq must be >0 and <=1')
+    if not isinstance(maxVarFreq, (float, int)):
+        raise TypeError('maxVarFreq must be float or integer')
+    if not minVarFreq <= maxVarFreq <= 1:
+        raise ValueError('maxVarFreq must be >minVarFreq and <=1')
+    # Open input and output files
+    ifile = open(infile, 'r')
+    ofile = open(outfile, 'w')
+    # Extract and process header
+    header = ifile.next()
+    ofile.write(header)
+    header = header.strip().split('\t')
+    refReadsIndex = header.index('Reads1')
+    varReadsIndex = header.index('Reads2')
+    varForStrandIndex = header.index('Reads2Plus')
+    # Loop though input file
+    for line in ifile:
+        # Extract data
+        linedata = line.strip().split('\t')
+        refReads = float(linedata[refReadsIndex])
+        varReads = float(linedata[varReadsIndex])
+        forStrand = float(linedata[varForStrandIndex])
+        # Perform calculations
+        cov = refReads + varReads
+        varFreq = varReads / (refReads + varReads)
+        strandBias = forStrand / varReads
+        strandBias = max(1 - strandBias, strandBias)
+        # Filter
+        if minCov > cov:
+            continue
+        if minVarReads > varReads:
+            continue
+        if minVarFreq > varFreq:
+            continue
+        if maxVarFreq < varFreq:
+            continue
+        if strandBias > maxStrandBias:
+            continue
+        # Write output
+        ofile.write(line)
+    # Close files
+    ifile.close()
+    ofile.close()
+
 def somatic(
         mpileup1, mpileup2, outPrefix, purity = 0.5, minCovNormal = 8,
         minCovTumour = 6, minHetFreq = 0.1, minHomFreq = 0.75,
         normalPurity = 1.0, tumourPurity = 0.5, pValueHet = 0.99,
         pValueSomatic = 0.05, strandFilter = False, javaPath = 'java',
-        varscanPath = 'varscan.jar'
+        varscanPath = 'varscan.jar', memory = None
     ):
     # Check commands
-    toolbox.check_var(purity, 'num', gt = 0, mx = 1)
-    toolbox.check_var(minCovNormal, 'int', gt = 0)
-    toolbox.check_var(minCovTumour, 'int', gt = 0)
-    toolbox.check_var(minHetFreq, 'num', gt = 0, lt = 1)
-    toolbox.check_var(minHomFreq, 'num', gt = 0, mx = 1)
-    toolbox.check_var(normalPurity, 'num', gt = 0, mx = 1)
-    toolbox.check_var(normalPurity, 'num', gt = 0, mx = 1)
-    toolbox.check_var(pValueHet, 'num', mn = 0, mx = 1)
-    toolbox.check_var(pValueSomatic, 'num', mn = 0, mx = 1)
-    toolbox.check_var(strandFilter, 'bool')
-    toolbox.check_var(javaPath, 'file')
-    toolbox.check_var(varscanPath, 'file')
+    if not isinstance(purity, (float, int)):
+        raise TypeError('purity must be float or integer')
+    if not 0 < purity <= 1:
+        raise ValueError('purity must be >0 and <=1')
+    if not isinstance(minCovNormal, int):
+        raise TypeError('minCovNormal must be an integer')
+    if minCovNormal <= 0:
+        raise ValueError('minCovNormal must be >0')
+    if not isinstance(minCovTumour, int):
+        raise TypeError('minCovTumour must be an integer')
+    if minCovTumour <= 0:
+        raise ValueError('minCovTumour must be >0')
+    if not isinstance(minHetFreq, float):
+        raise TypeError('minHetFreq must be float')
+    if not 0 < minHetFreq < 1:
+        raise ValueError('minHetFreq must be >0 and <1')
+    if not isinstance(minHomFreq, (float,int)):
+        raise TypeError('minHomFreq must be float')
+    if not 0 < minHomFreq <= 1:
+        raise ValueError('minHomFreq must be >0 and <=1')
+    if not isinstance(normalPurity, (float, int)):
+        raise TypeError('normalPurity must be float or integer')
+    if not 0 < normalPurity <= 1:
+        raise ValueError('purity must be >0 and <=1')
+    if not isinstance(pValueHet, (float, int)):
+        raise TypeError('pValueHet must be float or integer')
+    if not 0 <= pValueHet <= 1:
+        raise ValueError('pValueHet must be >=0 and <=1')
+    if not isinstance(pValueSomatic, (float, int)):
+        raise TypeError('pValueSomatic must be float or integer')
+    if not 0 <= pValueSomatic <= 1:
+        raise ValueError('pValueSomatic must be >=0 and <=1')
+    if not isinstance(strandFilter, bool):
+        raise TypeError('strandFilter must be bool')
+    if memory and not isinstance(memory, int):
+        raise TypeError('memory must be an integer')
+    if memory and not 1 <= memory <= 256:
+        raise ValueError('memory must be >=1 and <=256')
     # Create command
     command = [
         javaPath, '-jar', varscanPath, 'somatic', mpileup1, mpileup2,
@@ -44,6 +198,9 @@ def somatic(
     ]
     if strandFilter:
         command.extend(['--strand-filter', '1'])
+    # Add memory
+    if memory:
+        command.insert(1, '-Xmx{}g'.format(memory))
     # Join and return command
     command = ' '.join(command)
     return(command)
@@ -155,7 +312,8 @@ def filterVarscan(
 def copynumber(
         mpileup1, mpileup2, outPrefix, minBaseQ = 20, minMapQ = 20,
         minCov = 20, minSegSize = 10, maxSegSize = 100, pValue = 0.01,
-        dataRatio = None, javaPath = 'java', varscanPath = 'varscan.jar'
+        dataRatio = None, javaPath = 'java', varscanPath = 'varscan.jar',
+        memory = None
     ):
     ''' Function to generate command to perform copynumber calling using
     the varscan program. Function takes the following X arguments:
@@ -172,13 +330,38 @@ def copynumber(
     
     '''
     # Check commands
-    toolbox.check_var(minBaseQ, 'int', gt = 0)
-    toolbox.check_var(minMapQ, 'int', gt = 0)
-    toolbox.check_var(minCov, 'int', gt = 0)
-    toolbox.check_var(minSegSize, 'int', gt = 0)
-    toolbox.check_var(maxSegSize, 'int', mn = minSegSize)
-    toolbox.check_var(pValue, 'num', mn = 0, mx = 1)
-    toolbox.check_var(dataRatio, 'num', mn = 0.01, mx = 100)
+    if not isinstance(minBaseQ, int):
+        raise TypeError('minBaseQ must be integer')
+    if minBaseQ < 1:
+        raise ValueError('minBaseQ must be >0')
+    if not isinstance(minMapQ, int):
+        raise TypeError('minMapQ must be integer')
+    if minMapQ < 1:
+        raise ValueError('minMapQ must be >0')
+    if not isinstance(minCov, int):
+        raise TypeError('minCov must be integer')
+    if minCov < 1:
+        raise ValueError('minCov must be >0')
+    if not isinstance(minSegSize, int):
+        raise TypeError('minSegSize must be integer')
+    if minSegSize < 1:
+        raise ValueError('minSegSize must be >0')
+    if not isinstance(maxSegSize, int):
+        raise TypeError('maxSegSize must be integer')
+    if maxSegSize < minSegSize:
+        raise ValueError('maxSegSize must be >=minSegSize')
+    if not isinstance(pValue, (int, float)):
+        raise TypeError('pValue must be integer or float')
+    if not 0 <= pValue <= 1:
+        raise ValueError('pValue must be >=0 and <=1')
+    if dataRatio and not isinstance(dataRation (int, float)):
+        raise TypeError('dataRatio must be float or integer')
+    if dataRatio and not 0.01 <= dataRatio <= 100:
+        raise ValueError('dataRatio must be >=0.01 and <=100')
+    if memory and not isinstance(memory, int):
+        raise TypeError('memory must be an integer')
+    if memory and not 1 <= memory <= 256:
+        raise ValueError('memory must be >=1 and <=256')
     # Create command to calculate depth if required
     if dataRatio is None:
         ratioCommand = 'R=$(%s) && echo "Ratio: $R"' %(
@@ -194,6 +377,9 @@ def copynumber(
         str(minSegSize), '--max-segment-size', str(maxSegSize), '--p-value',
         str(pValue), '--data-ratio', str(dataRatio)
     ]
+    # Add memory
+    if memory:
+        copyCommand.insert(1, '-Xmx{}g'.format(memory))
     # Combine and return commands
     if ratioCommand:
         return('%s && %s' %(ratioCommand, ' '.join(copyCommand)))
