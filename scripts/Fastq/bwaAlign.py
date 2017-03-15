@@ -3,8 +3,8 @@
 Usage:
     
     bwaAlign.py <prefix> <indir> <index> <threads> <outbam> <modules>
-        [--unpaired] [--namesort] [--dedupindv] [--samplename=<sn>]
-        [--libraryid=<li>] [--platform=<pl>] [--module=<md>]
+        [--unpaired] [--namesort] [--samplename=<sn>] [--libraryid=<li>]
+        [--readgroup=<rg>] [--platform=<pl>] [--trim=<tm>]
     
 Options:
     
@@ -13,7 +13,8 @@ Options:
     --samplename=<sm>  Sample name [default: Unknown].
     --libraryid=<li>   Library id [default: Unknown].
     --platform=<pl>    Platform [default: Unknown].
-    --dedupindv        Dedup individual FASTQ files.
+    --readgroup=<rg>   Read group [default: 1].
+    --trim=<tm>        Sequence to trim from reads.
     --help             Output this message.
     
 '''
@@ -33,8 +34,9 @@ args['<indir>'] = args['<indir>'].split(',')
 if not args['<outbam>'].endswith('.bam'):
     raise ValueError("Output file must end with '.bam'")
 args['<outbam>'] = os.path.abspath(args['<outbam>'])
-# Parse module file
+# Parse module file and create job dictionary
 pmDict = slurm.parsePathModule(args['<modules>'])
+jobObject = slurm.submitJobs()
 # Find fastq files
 read1List = []
 read2List = []
@@ -52,15 +54,12 @@ else:
         read2List.extend(read2)
     read1List = [os.path.abspath(x) for x in read1List]
     read2List = [os.path.abspath(x) for x in read2List]
-# Raise Error if no Fastq files identified
 if len(read1List) == 0:
     raise IOError('Failed to find FASTQ files')
 # Create object to store jobs and create log folder
-jobObject = slurm.submitJobs()
-bamList = []
-jobList = []
 args['<logfolder>'] = args['<outbam>'][:-4]
-os.mkdir(args['<logfolder>'])
+if not os.path.isdir(args['<logfolder>']):
+    os.mkdir(args['<logfolder>'])
 # Perform alignment for each pair of FASTQ files
 for readgroup, (read1, read2) in enumerate(
         itertools.izip_longest(read1List, read2List)
