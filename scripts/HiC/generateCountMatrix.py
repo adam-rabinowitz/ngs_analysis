@@ -22,7 +22,7 @@ import os
 import re
 import numpy as np
 from ngs_python.structure import interactionMatrix
-from general_python import docopt, toolbox
+from general_python import docopt
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')
 # Check numerical arguments
@@ -30,11 +30,14 @@ args['--threads'] = int(args['--threads'])
 if args['nobed']:
     args['<binsize>'] = int(args['<binsize>'])
 # Check input files
-toolbox.check_var(args['<infile>'], 'file')
+if not os.path.isfile(args['<infile>']):
+    raise IOError('{} not found'.format(args['<infile>']))
 if args['bed']:
-    toolbox.check_var(args['<bedfile>'], 'file')
+    if not os.path.isfile(args['<bedfile>']):
+        raise IOError('{} not found'.format(args['<bedfile>']))
 else:
-    toolbox.check_var(args['<chrfile>'], 'file')
+    if not os.path.isfile(args['<chrfile>']):
+        raise IOError('{} not found'.format(args['<chrfile>']))
 # Extract and print parameters to create bins
 if args['bed']:
     binData = args['<bedfile>']
