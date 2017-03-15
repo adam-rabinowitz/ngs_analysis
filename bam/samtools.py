@@ -153,16 +153,31 @@ def sort(
 def mpileup(
         inBam, outFile, reference = '', minMapQ = 20, minBaseQ = 20,
         countOrphans = False, countDup = False, disableBAQ = True,
-        maxDepth = 10000, minFilter = None, path = 'samtools'
+        maxDepth = 10000, minFilter = 0, path = 'samtools'
     ):
     # Check numeric arguments
-    toolbox.checkArg(minMapQ, 'int', mn = 2)
-    toolbox.checkArg(minBaseQ, 'int', mn = 0)
-    toolbox.checkArg(countOrphans, 'bool')
-    toolbox.checkArg(countDup, 'bool')
-    toolbox.checkArg(disableBAQ, 'bool')
-    toolbox.checkArg(maxDepth, 'int', gt = 0)
-    toolbox.checkArg(minFilter, 'int', mn = 0)
+    if not isinstance(minMapQ, int):
+        raise TypeError('minMapQ must be integer')
+    if minMapQ < 2:
+        raise ValueError('minMapQ must be >=2')
+    if not isinstance(minBaseQ, int):
+        raise TypeError('minBaseQ must be integer')
+    if minBaseQ < 0:
+        raise ValueError('minMapQ must be >=0')
+    if not isinstance(countOrphans, bool):
+        raise TypeError('countOrphans must be boolean')
+    if not isinstance(countDup, bool):
+        raise TypeError('countDup must be boolean')
+    if not isinstance(disableBAQ, bool):
+        raise TypeError('disableBAQ must be boolean')
+    if not isinstance(maxDepth, int):
+        raise TypeError('maxDepth must be integer')
+    if maxDepth < 1:
+        raise ValueError('maxDepth must be >=1')
+    if not isinstance(minFilter, int):
+        raise TypeError('minFilter must be integer')
+    if minFilter < 0:
+        raise ValueError('minFilter must be >=0')
     # Create initial command
     command = [path, 'mpileup', '-q', str(minMapQ), '-Q', str(minBaseQ), '-d',
         str(maxDepth)]
@@ -182,7 +197,7 @@ def mpileup(
         finalCommand = '%s | %s > %s' %(' '.join(command), awk, outFile)
     else:
         command.extend(['-o', outFile, inBam])
-        finalCommand = ' '.join(command)
+        finalCommand = '%s > %s' %(' '.join(command), outFile)
     # Retutn command
     return(finalCommand)
 
