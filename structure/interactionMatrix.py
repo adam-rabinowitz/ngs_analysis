@@ -229,13 +229,38 @@ class genomeBin(object):
 class normaliseCountMatrices(object):
     
     def __init__(self, matrixList, regionFile):
+        ''' Initialise matrix normalisation.
+        
+        Args:
+            matrixList (list)- List of paths to count matries.
+            regionFile (str)- Path to tabdelimited region file. Two acceptable
+                formats. 1) A four column file listing chromosome name,
+                start position, end position and name of regions. 2) A two
+                column file listing region name and a comma seperated list
+                of inidices.
+        
+        '''
         # Store supplied data
         self.matrixList = matrixList
-        self.regionFile = regionFile
-        # Extract bin and region data
-        self.binNames, self.binChr, self.binStart, self.binEnd = (
-            self.__extractBinData())
-        self.regionIndices = self.__extractRegionIndices()
+        # Extract column number and extract indices
+        with open (regionFile) as infile:
+            colnumber = len(infile.next().split('\t'))
+        if colnumber == 4:
+            self.regionIndices = self.__generateRegionIndices(regionFile)
+        elif colnumber == 2:
+            self.regionIndices = self.__extractRegionIndices(regionFile)
+#        self.regionFile = regionFile
+#        # Extract bin and region data
+#        self.binNames, self.binChr, self.binStart, self.binEnd = (
+#            self.__extractBinData())
+#        self.regionIndices = self.__extractRegionIndices()
+#        # Store supplied data
+#        self.matrixList = matrixList
+#        self.regionFile = regionFile
+#        # Extract bin and region data
+#        self.binNames, self.binChr, self.binStart, self.binEnd = (
+#            self.__extractBinData())
+#        self.regionIndices = self.__extractRegionIndices()
     
     def __extractBinData(self):
         # Check bin names are identical across all files
@@ -272,21 +297,26 @@ class normaliseCountMatrices(object):
                 if binArray[i + 1] <= binArray[i]:
                     raise IOError('Matrices contain anomalous bins')
         # Return data
-        return(np.array(binNames), binChr, binStart, binEnd)
+        return(binChr, binStart, binEnd)
     
-    def __extractRegionIndices(self):
-        ''' Function generates, and returns, a dictionary of indices for regions in
-        self.regionFile.'''
+    def __generateRegionIndices(self, regionFile):
+        ''' Function generates, and returns, a dictionary of indices for
+        regions in self.regionFile.
+        
+        '''
+        # Extract bin data
+        binChr, binStart, binEnd = self.__extractBinData()
         # Create variable to store region indices and loop through file
         regionIndices = {}
-        with open(self.regionFile, 'r') as infile:
+        with open(regionFile, 'r') as infile:
             for line in infile:
                 # Extract region data and find indices of matching bins
                 chrom, start, end, region = line.strip().split('\t')
                 acceptableBins = (
-                    (self.binChr == chrom)
-                    & (self.binStart >= np.uint32(start))
-                    & (self.binEnd <= np.uint32(end)))
+                    (binChr == chrom)
+                    & (binStart >= np.uint32(start))
+                    & (binEnd <= np.uint32(end))
+                )
                 indices = np.where(acceptableBins)[0]
                 # Add region indices to dictionary
                 if region in regionIndices:
@@ -308,6 +338,18 @@ class normaliseCountMatrices(object):
         # Return region index data
         return(regionIndices)
     
+    def __extractRegionIndices(self, regionFile):
+        ''' Function generates, and returns, a dictionary of indices for
+        regions in self.regionFile.
+        
+        '''
+        regionIndices = {}
+        with open(regionFile, 'r') as infile:
+            for line in infile:
+                region, indices = line.strip().split('\t')
+                regionIndices[region] = map(int, indices.split(','))
+        return(regionIndices)
+    
     def __colSumsMatrix(self, rmDiag, inQueue, outQueue):
         for matrix in iter(inQueue.get, None):
             # Read in counts and remove diagonal if required
@@ -318,9 +360,9 @@ class normaliseCountMatrices(object):
             # Check matrices are symetrical
             m, n = inMatrix.shape
             if m != n:
-                raise ValueError('Matrix must have equal number of columns and rows')
+                raise ValueError('number of columns and rows must be equal')
             if not np.all(inMatrix == inMatrix.T):
-                raise ValueError('Matrix must be symetrical')
+                raise ValueError('matrix must be symetrical')
             # Create output data
             binSums = np.zeros(m, dtype=np.uint64)
             # Loop through regions and extract counts
