@@ -3,14 +3,14 @@
 Usage:
     
     translateResults.py <results> <genecol> <translation> <outfile> 
-        [--keepdup=<kkepdup>] [--noheader=<noheader>]
+        [--keepdup] [--noheader]
     
-    translateResults.py (-h | --help)g
+    translateResults.py (-h | --help)
     
 Options:
     
-    --keepdup=<pa>          Keep genes with multiple translations.
-    --noheader=<noheader>   Results file has no header.
+    --keepdup    Keep genes with multiple translations.
+    --noheader   Results file has no header.
     
 """
 # Import required modules
@@ -19,10 +19,10 @@ from general_python import docopt
 # Extract arguments
 args = docopt.docopt(__doc__,version = 'v1')
 args['<genecol>'] = int(args['<genecol>'])
-# Extract translations and generate output
-tranDict, tranLog = gene_conversion.create_tran_dictionary(
+# Extract translations and print log
+tranDict, tranLog1 = gene_conversion.create_tran_dictionary(
     args['<translation>'])
-gene_conversion.replace_gene_names(
+tranLog2, tranLog2 = gene_conversion.replace_gene_names(
     infile=args['<results>'], outfile=args['<outfile>'],
     genecol=args['<genecol>'], translation=tranDict,
     header=not(args['--noheader']), rmdup=not(args['--keepdup'])
