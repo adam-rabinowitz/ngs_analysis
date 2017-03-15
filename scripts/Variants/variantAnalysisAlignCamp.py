@@ -32,7 +32,6 @@ args['logdir'] = os.path.join(args['<outdir>'], args['name'] + '_log')
 if not os.path.isdir(args['logdir']):
     os.mkdir(args['logdir'])
 # Find fastq files
-print(args['<indir>'])
 read1, read2 = fastqFind.findFastq(
     prefix = args['prefix'], dirList = args['<indir>'], pair = True)
 if len(read1) != 1 or len(read2) != 1:
@@ -75,10 +74,10 @@ dedupCommand = picard.markDuplicates(
     inBam = outfiles['initialbam'], outBam=outfiles['dedupbam'],
     logFile=outfiles['deduplog1'], removeDuplicates=True, delete=True,
     picardPath=pmdata[('picard', 'path')], javaPath='java',
-    memory=24
+    memory=30
 )
 dedupJobID = slurmObject.add(
-    command=dedupCommand, processors=4, memory=7, stdout=outfiles['deduplog2'],
+    command=dedupCommand, processors=6, memory=6, stdout=outfiles['deduplog2'],
     stderr=outfiles['deduplog2'], depend=[alignJobID],
     modules=pmdata[('picard', 'modules')]
 )
@@ -87,10 +86,10 @@ bsqrCommand = gatk.bsqr(
     inBam=outfiles['dedupbam'], outBam=outfiles['bsqrbam'],
     inVcf=args['<snpvcf>'], reference=args['<index>'],
     bsqrTable=outfiles['bsqrfile'], javaPath='java',
-    gatkPath=pmdata[('gatk', 'path')], delete=True, memory=24
+    gatkPath=pmdata[('gatk', 'path')], delete=True, memory=30
 )
 bsqrJobID = slurmObject.add(
-    command=bsqrCommand, processors=4, memory=7, stdout=outfiles['bsqrlog'],
+    command=bsqrCommand, processors=6, memory=6, stdout=outfiles['bsqrlog'],
     stderr=outfiles['bsqrlog'], depend=[dedupJobID],
     modules=pmdata[('gatk', 'modules')]
 )
@@ -99,10 +98,10 @@ realignCommand = gatk.gatkRealign(
     inBam=outfiles['bsqrbam'], outBam=outfiles['realignbam'],
     inVcf = args['<indelvcf>'], reference=args['<index>'],
     javaPath='java', gatkPath=pmdata[('gatk', 'path')],
-    delete = True, threads = 4, listFile = outfiles['listfile'],
-    memory=24
+    delete = True, threads = 6, listFile = outfiles['listfile'],
+    memory=30
 )
-realignJobID = slurmObject.add(command=realignCommand, processors=4, memory=7,
+realignJobID = slurmObject.add(command=realignCommand, processors=6, memory=6,
     stdout=outfiles['realignlog'], stderr=outfiles['realignlog'],
     depend=[bsqrJobID], modules=pmdata[('gatk', 'modules')]
 )
