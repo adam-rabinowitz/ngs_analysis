@@ -15,11 +15,11 @@ args = docopt.docopt(__doc__,version = 'v1')
 args['<number>'] = int(args['<number>'])
 if args['<number>'] < 1:
     raise ValueError('Number must be positive integer')
+print(args)
 # Create input fastq objects objects
-parseIn = fastqIO.parseFastq(
-    fastq1=args['<inFastq1>'], fastq2=args['<inFastq2>'])
+parseIn = fastqIO.parseFastq(fastq1=args['<inFastq1>'], fastq2=args['<inFastq2>'])
 countIn = parseIn.check_names()
-print '{} initial reads'.format(countIn)
+print('{} initial reads'.format(countIn))
 if countIn < args['<number>']:
     raise ValueError('Number exceeds reads in FASTQ file')
 # Sample FASTQ files
