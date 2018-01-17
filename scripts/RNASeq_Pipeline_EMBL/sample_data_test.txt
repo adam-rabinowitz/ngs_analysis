@@ -1,0 +1,2 @@
+TEST_1	TEST_1	/g/furlong/project/60_CTCF_RNASeq/data/solexa/fastq/
+TEST_2	TEST_2	/g/furlong/project/60_CTCF_RNASeq/data/solexa/fastq/

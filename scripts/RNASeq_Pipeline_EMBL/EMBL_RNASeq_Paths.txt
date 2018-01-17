@@ -1,0 +1,5 @@
+cutadapt	/g/easybuild/x86_64/CentOS/7/nehalem/software/cutadapt/1.9.1-foss-2016b-Python-2.7.12/bin/cutadapt	cutadapt/1.9.1-foss-2016b-Python-2.7.12
+fastqc	/g/easybuild/x86_64/CentOS/7/nehalem/software/FastQC/0.11.5-Java-1.8.0_112/fastqc	FastQC/0.11.5-Java-1.8.0_112
+picard	/g/easybuild/x86_64/CentOS/7/nehalem/software/picard/2.9.0-Java-1.8.0_112/picard.jar	picard/2.9.0-Java-1.8.0_112
+samtools	/g/easybuild/x86_64/CentOS/7/nehalem/software/SAMtools/1.3.1-foss-2016b/bin/samtools	SAMtools/1.3.1-foss-2016b
+star	STAR	STAR/2.5.2a-foss-2016b

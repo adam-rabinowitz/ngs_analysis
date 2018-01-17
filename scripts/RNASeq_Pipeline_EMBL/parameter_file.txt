@@ -1,0 +1,15 @@
+# annotations
+fasta	/g/furlong/genome/D.melanogaster/Dm6/fasta/dm6.UCSC.noMask.fa
+refflat	/g/furlong/genome/D.melanogaster/Dm6/6.13/additional_annotation/dmel-r6.13.transcript.ref_flat.txt
+rrna	/g/furlong/genome/D.melanogaster/Dm6/6.13/additional_annotation/dmel-r6.13.rRNA.interval_list
+# outdir
+outdir	/g/furlong/project/60_CTCF_RNASeq/data/alignments//
+# Trim Parameters
+minlength	25
+adapter	ACGGAATAGATCGGAAGAGCG,ATTAGGCAGATCGGAAGAGCG,AAACTTGAGATCGGAAGAGCG,AGCTCCAAGATCGGAAGAGCG
+basequal	10
+error	0.1
+overlap	1
+# Align Parameters
+index	/g/furlong/genome/D.melanogaster/Dm6/indexes/STAR/
+strand	reverse
