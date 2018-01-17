@@ -583,9 +583,9 @@ class multiple_coverage(object):
                 names = ['{}:{}-{}'.format(*x) for x in intervals]
                 outDF = pd.DataFrame(index=names, columns=self.bamList)
             # Add coverage to output
-            outDF[bam] = bamCov.mean_coverage(
+            outDF[bam] = bamCov.mean_coverage_each(
                 intervals=intervals, map_quality=map_quality,
-                remove_dup=remove_dup, check_intervals=False)
+                remove_dup=remove_dup)
         # Return data
         return(outDF)
     
