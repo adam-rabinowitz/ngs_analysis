@@ -302,7 +302,7 @@ class parseFastq(object):
         # Raise error if desired number of reads not extracted
         if count != number:
             raise IOError('Not all desired reads extracted')
-
+    
     def __check_name_process(self, fastq, conn):
         ''' Function to generate a process to read FASTQ files and extract read
         name and number.
@@ -357,13 +357,11 @@ class parseFastq(object):
             )
             process.start()
             conn[1].close()
-            # Store process data
-            self.read_processes.append((process, conn[0]))
         # Extract data and count reads
         count = 0
         while True:
             try:
-                data = self.__read_processes_recv()
+                data = conn[0].recv()
             except EOFError:
                 break
             count += 1
@@ -376,8 +374,8 @@ class parseFastq(object):
                     raise ValueError('Read {} name error'.format(count))
             # Check read number for single fastq
             else:
-                if data[0][1] != 1:
-                    self.close()
+                if data[1] != '1':
+                    self.__read_process_stop()
                     raise ValueError('Read {} name error'.format(count))
         # Stop read processes and return count
         self.__read_process_stop()
